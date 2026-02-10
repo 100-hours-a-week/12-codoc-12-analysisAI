@@ -8,8 +8,13 @@ class Settings(BaseSettings):
     API_PREFIX : str = "/api/v2"
 
     # --- Vector DB (Qdrant) 설정 ---
-    QDRANT_URL : str = "http://localhost:6333"
+    QDRANT_HOST : str = "localhost"
+    QDRANT_PORT: int = 6333
     QDRANT_API_KEY : Optional[str] = None
+
+    @property
+    def QDRANT_URL(self) -> str:
+        return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
 
     # .env 파일을 읽어오기 위한 설정
     model_config = SettingsConfigDict(
