@@ -17,11 +17,23 @@ async def get_recommendations(request: RecommendRequest):
         # 환경 세팅용 목업 데이터셋
         mock_recommendations = [
             ProblemRecommendation(
-                problem_id=1001,
+                problem_id=1,
                 reason_msg="[환경세팅] 기본 추천 문제입니다. 조건문 해석 능력을 키우기 좋습니다.",
             ),
             ProblemRecommendation(
-                problem_id=1045,
+                problem_id=2,
+                reason_msg="[환경세팅] 유저 수준에 맞는 연습 문제입니다.",
+            ),
+            ProblemRecommendation(
+                problem_id=3,
+                reason_msg="[환경세팅] 기본 추천 문제입니다. 조건문 해석 능력을 키우기 좋습니다.",
+            ),
+            ProblemRecommendation(
+                problem_id=4,
+                reason_msg="[환경세팅] 유저 수준에 맞는 연습 문제입니다.",
+            ),
+            ProblemRecommendation(
+                problem_id=5,
                 reason_msg="[환경세팅] 유저 수준에 맞는 연습 문제입니다.",
             ),
         ]
