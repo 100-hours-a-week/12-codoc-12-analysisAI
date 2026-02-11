@@ -136,7 +136,7 @@ jobs:
           curl -X POST -H "Content-Type: application/json" \
           -d "{
             \"embeds\": [{
-              \"title\": \"[AI] CD 배포 결과 알림\",
+              \"title\": \"[AI - analysis] CD 배포 결과 알림\",
               \"description\": \"**상태**: ${STATUS}\\n**브랜치**: ${BRANCH}\\n**담당자**: ${ACTOR}\",
               \"color\": ${COLOR},
               \"fields\": [
