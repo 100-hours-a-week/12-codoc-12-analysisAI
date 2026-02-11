@@ -10,7 +10,7 @@ from app.domain.recommend.recommendation_schemas import (
 router = APIRouter()
 
 
-@router.post("/", response_model=FinalRecommendResponse)
+@router.post("", response_model=FinalRecommendResponse)
 async def get_recommendations(request: RecommendRequest):
     try:
         # TODO: 실제 서비스 로직(RecommendService) 호출 예정
