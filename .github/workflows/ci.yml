@@ -110,17 +110,17 @@ jobs:
           COMMIT_MSG_ESCAPED=$(printf '%s' "$COMMIT_MSG" | sed 's/\\/\\\\/g; s/\"/\\\"/g; :a;N;$!ba;s/\n/\\n/g')
 
           if [ "${{ job.status }}" = "success" ]; then
-            STATUS="성공"
+            STATUS="✅ 성공"
             COLOR="65280"
           else
-            STATUS="실패"
+            STATUS="❌ 실패"
             COLOR="16711680"
           fi
 
           curl -X POST -H "Content-Type: application/json" \
           -d "{
             \"embeds\": [{
-              \"title\": \"[AI] CI 결과 알림\",
+              \"title\": \"[AI - analysis] CI 결과 알림\",
               \"description\": \"**상태**: ${STATUS}\\n**브랜치**: ${BRANCH}\\n**담당자**: ${ACTOR}\",
               \"color\": ${COLOR},
               \"fields\": [
