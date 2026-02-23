@@ -46,13 +46,16 @@ def load_user_memories():
                     user_id_int = 0
 
                 full_payload = item.get("payload", {})
-                full_payload["user_id"] = user_id_int
+                problem_id = int(full_payload.get("problem_id"))
+                created_at = int(full_payload.get("created_at", 0))
+                point_id = f"user:{user_id_int}:problem:{problem_id}:ts:{created_at}"
 
                 vector_db.upsert_memory(
                     user_id=user_id_int,
-                    problem_id=full_payload.get("problem_id"),
+                    problem_id=problem_id,
                     vector=vector,
                     payload=full_payload,
+                    point_id=point_id,
                 )
         print(f"   ✅ 파일 '{file_name}' 내 유저 데이터 적재 완료")
 
