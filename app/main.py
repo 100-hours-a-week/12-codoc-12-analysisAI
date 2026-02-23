@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 
+from app.common.exceptions.exception_handler import register_exception_handlers
 from app.core.config import settings
 from app.database.vector_db import vector_db
 from app.domain.recommend import recommend_router
 
 app = FastAPI(title="Codoc AI Server", version="2.0.0")
+register_exception_handlers(app)
 
 app.include_router(
     recommend_router.router,

@@ -48,13 +48,16 @@ class VectorDB:
 
     # --- user_memories 컬렉션 관련 기능 (Read & Write) ---
 
-    def upsert_memory(self, user_id: int, problem_id: int, vector: list, payload: dict):
+    def upsert_memory(self, user_id: int, problem_id: int, vector: list, payload: dict, point_id: str | None = None):
         payload.update({"user_id": user_id, "problem_id": problem_id})
+
+        raw_key = point_id or f"user:{user_id}:problem:{problem_id}:ts:{payload.get('created_at', 0)}"
+        stable_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, raw_key))
 
         self.client.upsert(
             collection_name=self.memory_collection,
             points=[
-                models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=payload)
+                models.PointStruct(id=stable_uuid, vector=vector, payload=payload)
             ],
         )
 
