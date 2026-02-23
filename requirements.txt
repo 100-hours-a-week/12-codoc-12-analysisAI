@@ -13,10 +13,13 @@ python-dotenv
 
 # Database & Vector Search
 qdrant-client
+FlagEmbedding
+torch
 
 # Utility
 pydantic-settings
 httpx
+
 
 # pip install -r requirements.txt
 # 설치된 모든 라이브러리의 정확한 버전을 확인하고 싶을 때

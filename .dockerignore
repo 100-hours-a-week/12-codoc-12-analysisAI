@@ -1,0 +1,22 @@
+# 보안 파일
+.env
+*.env
+
+# 대용량 AI 모델 및 데이터
+model_cache/
+qdrant_storage/
+app/database/user_dataset/
+
+# 파이썬 캐시 및 가상환경
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE 및 시스템 파일
+.idea/
+.vscode/
+.gitignore
+.git
+.DS_store
+Thumbs.db

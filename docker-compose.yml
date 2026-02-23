@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  api_server:
+    build: .
+    container_name: analysis_api_server
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app # 실시간 코드 수정 반영용
+      - ./model_cache:/root/.cache/huggingface # 모델 재다운로드 방지용
+    env_file:
+      - .env  # 환경 변수 로드
+    restart: always
+
