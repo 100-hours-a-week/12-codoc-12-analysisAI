@@ -35,6 +35,8 @@ Thumbs.db
 model_cache/
 qdrant_storage/
 app/database/user_dataset/
+app/database/algo_concepts/
+
 
 
 

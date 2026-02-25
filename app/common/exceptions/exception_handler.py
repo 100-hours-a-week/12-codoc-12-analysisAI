@@ -6,6 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.common.api_response import CommonResponse
 from app.common.exceptions.base_exception import BusinessException
+from app.common.exceptions.custom_exception import DependencyNotReadyException
 
 
 def register_exception_handlers(app: FastAPI):
@@ -61,5 +62,16 @@ def register_exception_handlers(app: FastAPI):
             status_code=400,
             content=CommonResponse.fail_response(
                 code=exc.errorCode, message=exc.message
+            ).model_dump(),
+        )
+
+    @app.exception_handler(Exception)
+    async def dependency_not_ready_handler(request: Request, exc: DependencyNotReadyException):
+        return JSONResponse(
+            status_code=424,
+            content=CommonResponse.fail_response(
+                code=exc.errorCode,
+                message=exc.message,
+                data=None,
             ).model_dump(),
         )
