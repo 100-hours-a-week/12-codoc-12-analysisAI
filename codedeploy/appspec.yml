@@ -1,0 +1,24 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/ubuntu/analysis/codedeploy-bundle
+permissions:
+  - object: /home/ubuntu/analysis/codedeploy-bundle/scripts
+    pattern: "**"
+    owner: ubuntu
+    group: ubuntu
+    mode: 755
+hooks:
+  ApplicationStop:
+    - location: scripts/stop_container.sh
+      timeout: 120
+      runas: ubuntu
+  AfterInstall:
+    - location: scripts/deploy_container.sh
+      timeout: 900
+      runas: ubuntu
+  ValidateService:
+    - location: scripts/validate_service.sh
+      timeout: 180
+      runas: ubuntu
