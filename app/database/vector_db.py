@@ -36,12 +36,17 @@ class VectorDB:
 
     async def get_problem_by_id(self, problem_id: int):
         try:
-            result = self.client.retrieve(
+            results, _ = self.client.scroll(
                 collection_name=self.problem_collection,
-                ids=[problem_id],
+                scroll_filter={
+                    "must": [
+                        {"key": "problem_id", "match": {"value": problem_id}}
+                    ]
+                },
+                limit=1,
                 with_payload=True,
             )
-            return result[0].payload if result else None
+            return results[0].payload if results else None
         except Exception as e:
             print(f"❌ 문제 조회 에러 ({problem_id}): {e}")
             return None
