@@ -14,6 +14,7 @@ python-dotenv
 # Database & Vector Search
 qdrant-client
 FlagEmbedding
+transformers>=4.44.2,<5
 torch
 
 # Utility
