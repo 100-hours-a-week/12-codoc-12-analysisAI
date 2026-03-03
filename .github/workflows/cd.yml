@@ -77,7 +77,7 @@ jobs:
           set -euo pipefail
 
           if [ "${IS_PROD}" = "true" ]; then
-            DEPLOY_TAG="prod"
+            DEPLOY_TAG="main"
           else
             DEPLOY_TAG="dev"
           fi
