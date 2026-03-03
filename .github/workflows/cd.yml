@@ -64,14 +64,6 @@ jobs:
             fi
           done
 
-      - name: Detect CodeDeploy bundle changes
-        id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            codedeploy:
-              - 'codedeploy/**'
-
       - name: Render deployment env for instance
         run: |
           set -euo pipefail
@@ -96,7 +88,6 @@ jobs:
             > codedeploy/deploy.env
 
       - name: Upload bundle to S3
-        if: steps.changes.outputs.codedeploy == 'true'
         run: |
           set -euo pipefail
 
