@@ -33,7 +33,13 @@ class RecommendService:
             return {"message": "추천 가능한 정적 문제가 없습니다."}
         return {
             "recommended_problem_ids": [str(p_id) for p_id in picked],
-            "reason": "초기 사용자를 위한 정적 추천입니다.",  # 추후 멘트 수정
+            "weak_tags": [],
+            "reason_context": {
+                "recommendation_type": "static",
+                "starter_basis": "초기 사용자에게 기초 개념과 학습 흐름을 잡아줄 수 있는 문제를 우선 추천",
+                "matched_tags": [],
+                "similar_user_count": 0,
+            },
         }
 
     async def get_collaborative_recommendations(
@@ -79,6 +85,7 @@ class RecommendService:
 
         # 3. 추천 후보군 및 점수 계산
         candidate_scores: dict[int, float] = {}
+        candidate_tag_matches: dict[int, set[str]] = {}
 
         for peer in similar_users:
             peer_payload = peer.payload or {}
@@ -86,7 +93,9 @@ class RecommendService:
             print(f"   - 유사유저({peer.id})가 푼 문제들: {peer_solved}")
 
             peer_weak_tags = set(peer_payload.get("weak_tags", []))
-            matching_tags_count = len(target_weak_tags.intersection(peer_weak_tags))
+            matched_tags = target_weak_tags.intersection(peer_weak_tags)
+            matching_tags_count = len(matched_tags)
+
 
             for p_id in peer_solved:
                 if p_id in solved_problems:
@@ -95,6 +104,11 @@ class RecommendService:
                 # 기본 1점 + 태그 매칭 가산점
                 base_score = 1.0 + (matching_tags_count * 5.0)
                 candidate_scores[p_id] = candidate_scores.get(p_id, 0.0) + base_score
+
+                if p_id not in candidate_tag_matches:
+                    candidate_tag_matches[p_id] = set()
+                candidate_tag_matches[p_id].update(matched_tags)
+
 
         if not candidate_scores:
             return {"message": "추천 가능한 문제가 없습니다."}
@@ -105,12 +119,21 @@ class RecommendService:
         )
         top_3_ids = [str(p_id) for p_id, score in sorted_recommendations[:3]]
 
+        top_problem_id = int(top_3_ids[0])
+        top_matched_tags = list(candidate_tag_matches.get(top_problem_id, set()))
+
         print(f"🎯 [DEBUG] 최종 추천 후보 리스트: {top_3_ids}")
 
         return {
             "user_id": user_id,
             "recommended_problem_ids": top_3_ids,
-            "reason": "유사한 오답 패턴을 가진 다른 유저들이 해결한 문제 중, 사용자님의 취약 태그와 밀접한 문제를 선정했습니다.",
+            "weak_tags": list(target_weak_tags),
+            "reason_context": {
+                "recommendation_type": "collaborative",
+                "similar_user_count": len(similar_users),
+                "matched_tags": top_matched_tags,
+                "collaborative_basis": "비슷한 취약 태그와 풀이 패턴을 보인 사용자들이 해결한 문제를 기반으로 추천",
+            },
         }
 
 

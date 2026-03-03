@@ -65,7 +65,7 @@ def register_exception_handlers(app: FastAPI):
             ).model_dump(),
         )
 
-    @app.exception_handler(Exception)
+    @app.exception_handler(DependencyNotReadyException)
     async def dependency_not_ready_handler(request: Request, exc: DependencyNotReadyException):
         return JSONResponse(
             status_code=424,

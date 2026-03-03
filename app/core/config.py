@@ -13,6 +13,16 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6333
     QDRANT_API_KEY: str | None = None
 
+    # Report LLM
+    REPORT_LLM_BASE_URL: str = "http://localhost:8001/v1"
+    REPORT_LLM_API_KEY: str = "EMPTY"
+    REPORT_LLM_MODEL: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
+
+    # Recommend LLM
+    RECOMMEND_LLM_BASE_URL: str = "http://localhost:8001/v1"
+    RECOMMEND_LLM_API_KEY: str = "EMPTY"
+    RECOMMEND_LLM_MODEL: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
+
     @property
     def QDRANT_URL(self) -> str:
         return f"http://{self.QDRANT_HOST}:{self.QDRANT_PORT}"
