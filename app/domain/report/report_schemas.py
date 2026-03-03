@@ -8,16 +8,16 @@ class ChatbotMessage(BaseModel):
     id: int
     user_id: int
     problem_id: int
-    ai_message: str
-    user_message: str
+    ai_message: str | None = None
+    user_message: str | None = None
     node: str
     send_at: str
 
 class RawMetrics(BaseModel):
     chatbot_msg_history: list[ChatbotMessage] = Field(default_factory=list)
     total_chatbot_requests: int = 0
-    total_summary_complete_sec: int = 0
-    quests_clears_weekly: int = 0
+    solve_duration_sec: int = 0
+    solved_problems_weekly : int = 0
 
 class ReportRequest(BaseModel):
     user_id: int
