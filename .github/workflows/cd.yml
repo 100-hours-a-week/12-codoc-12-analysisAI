@@ -2,8 +2,7 @@ name: ai-cd
 
 on:
   push:
-    branches: [chore/v2-chatai-cicd]
-  workflow_dispatch: {}
+    branches: [dev, main]
 
 permissions:
   contents: read
@@ -97,7 +96,7 @@ jobs:
             > codedeploy/deploy.env
 
       - name: Upload bundle to S3
-        if: steps.changes.outputs.codedeploy == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.changes.outputs.codedeploy == 'true'
         run: |
           set -euo pipefail
 

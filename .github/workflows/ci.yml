@@ -7,11 +7,8 @@ on:
         required: false
         type: boolean
         default: false
-  pull_request:
-    branches: [dev, main]
   push:
-    branches: [dev, main, chore/v2-chatai-cicd]
-  workflow_dispatch: {}
+    branches: [dev, main]
 
 permissions:
   contents: read
@@ -48,7 +45,7 @@ jobs:
         run: pip-audit -l || true
 
       - name: Notify Discord (always)
-        if: always() && github.event_name != 'workflow_call'
+        if: always() && github.event_name != 'workflow_call' && secrets.DISCORD_WEBHOOK != ''
         run: |
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           BRANCH="${{ github.ref_name }}"
