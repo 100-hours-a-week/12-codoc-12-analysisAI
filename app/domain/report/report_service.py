@@ -2,6 +2,8 @@ import math
 from collections import defaultdict
 
 from app.common.exceptions.custom_exception import DependencyNotReadyException
+from app.domain.report.report_llm_service import report_llm_service
+from app.domain.report.report_rag_service import report_rag_service
 from app.domain.report.report_schemas import (
     FutureRoadmap,
     PastDiagnosis,
@@ -15,6 +17,7 @@ from app.domain.report.report_schemas import (
 class ReportService:
     WARMUP_THRESHOLD = 3
 
+    # TODO: LEVEL_BASE_LINE이랑 ROADMAP_BY_LEVEL => 이대로 할 것인지,,, 아니면 지표 바꿀 것인지 고민
     LEVEL_BASELINE = {
         "newbie": {"independence": 65.0, "consistency": 50.0, "efficiency": 65.0},
         "pupil": {"independence": 72.0, "consistency": 60.0, "efficiency": 72.0},
@@ -29,10 +32,10 @@ class ReportService:
 
 
     async def generate_report(self, req: ReportRequest) -> ReportResponseData:
-        if req.raw_metrics.quests_clears_weekly < self.WARMUP_THRESHOLD:
+        if req.raw_metrics.solved_problems_weekly < self.WARMUP_THRESHOLD:
             report = self._warmup_report(req)
         else:
-            report = self._standard_report(req)
+            report = await self._standard_report(req)
 
         return ReportResponseData(
             user_id=req.user_id,
@@ -48,7 +51,7 @@ class ReportService:
         independence = base["independence"]
         efficiency = (
             self._calculate_efficiency(req)
-            if req.raw_metrics.quests_clears_weekly > 0
+            if req.raw_metrics.solved_problems_weekly  > 0
             else base["efficiency"]
         )
         consistency = base["consistency"]
@@ -62,15 +65,12 @@ class ReportService:
 
         weak_section = self._max_key(req.paragraph_fail_stats, default="UNKNOWN")
 
-
-        # TODO: 추후 RAG + llm 도입하면 수정할 예정
-        # summary_comment, analysis_text, metrics_analysis_comment, strategy_tip
-
+        # TODO : 수정 예정
         return ReportBody(
             report_mode="WARM_UP",
             summary=ReportSummary(
                 growth_index=growth_index,
-                user_type="new_challenger",
+                user_type="잠재력 폭발 아기 코알라",
                 summary_comment="좋은 출발이에요. 아직 데이터가 적어 이번 주는 가벼운 온보딩 리포트로 안내드릴게요!",
             ),
             past_diagnosis=PastDiagnosis(
@@ -94,7 +94,7 @@ class ReportService:
             ),
         )
 
-    def _standard_report(self, req: ReportRequest) -> ReportBody:
+    async def _standard_report(self, req: ReportRequest) -> ReportBody:
         accuracy = self._calculate_accuracy(req)
         independence = self._calculate_independence(req)
         efficiency = self._calculate_efficiency(req)
@@ -116,24 +116,44 @@ class ReportService:
             consistency=consistency,
         )
 
-        # TODO: RAG 조회 추가 + 424 에러 추가 + llm text 추가 예정
+        evidence_docs = await report_rag_service.retrieve_evidence(
+            weak_section=weak_section,
+            weak_quiz=weak_quiz,
+            weakest_metric=weakest_metric,
+            user_level=req.user_level,
+            top_k=3
+        )
 
+        if not evidence_docs:
+            raise DependencyNotReadyException()
 
-        # TODO : llm text로 변경 예정
+        llm_text = await report_llm_service.generate_sections(
+            user_level=req.user_level,
+            report_mode="STANDARD",
+            growth_index=growth_index,
+            weak_section=weak_section,
+            weak_quiz=weak_quiz,
+            weakest_metric=weakest_metric,
+            present_growth={
+                "accuracy": accuracy,
+                "independence": independence,
+                "efficiency": efficiency,
+                "consistency": consistency,
+            },
+            evidence_docs=evidence_docs
+        )
+
         return ReportBody(
             report_mode="STANDARD",
             summary=ReportSummary(
                 growth_index=growth_index,
                 user_type=self._user_type(growth_index),
-                summary_comment=f"이번 주 핵심 보완 지표는 {weakest_metric}입니다.",
+                summary_comment=llm_text["summary_comment"],
             ),
             past_diagnosis=PastDiagnosis(
                 weak_section=weak_section,
                 paragraph_fail_stats=req.paragraph_fail_stats,
-                analysis_text=(
-                    f"{weak_section} 문단에서 오답이 집중되었고,"
-                    f"퀴즈 기준으로는 {weak_quiz} 축이 취약합니다."
-                ),
+                analysis_text=llm_text["analysis_text"],
             ),
             present_growth=PresentGrowth(
                 accuracy=accuracy,
@@ -144,12 +164,9 @@ class ReportService:
                 is_imputed=False,
             ),
             future_roadmap=FutureRoadmap(
-                strategy_tip=(
-                    f"{weak_section} 문단 우선 확인 + {weak_quiz} 유형 집중 훈련으로"
-                    f"{weakest_metric} 지표를 먼저 개선하세요."
-                ),
-                recommended_action=self._recommended_action(weakest_metric),
-            )
+                strategy_tip=llm_text["strategy_tip"],
+                recommended_action=llm_text["recommended_action"],
+            ),
         )
 
 
@@ -175,7 +192,7 @@ class ReportService:
             ratio = quality_sum / len(first_by_node)
             return round(self._clamp(60 + ratio * 40, 0, 100),1)
 
-        clears = req.raw_metrics.quests_clears_weekly
+        clears = req.raw_metrics.solved_problems_weekly
         fails = sum(req.paragraph_fail_stats.values())
         denom = clears + fails
 
@@ -209,8 +226,8 @@ class ReportService:
         return round(self._clamp(100 - penalty, 0, 100), 1)
 
     def _calculate_efficiency(self, req:ReportRequest) -> float:
-        clears = max(req.raw_metrics.quests_clears_weekly, 1)
-        sec_per_quest = req.raw_metrics.total_summary_complete_sec / clears
+        clears = max(req.raw_metrics.solved_problems_weekly , 1)
+        sec_per_quest = req.raw_metrics.solve_duration_sec / clears
 
         if sec_per_quest <= 300:
             return 95.0
@@ -224,7 +241,7 @@ class ReportService:
 
 
     def _calculate_consistency(self, req: ReportRequest) -> float:
-        clears = req.raw_metrics.quests_clears_weekly
+        clears = req.raw_metrics.solved_problems_weekly
         return round(self._clamp((clears/14) * 100, 0, 100),1)
 
     def _growth_index(self, *, accuracy:float, independence:float, efficiency:float, consistency:float) -> float:
@@ -260,36 +277,38 @@ class ReportService:
         }
         return min(metrics, key=metrics.get)
 
-    # TODO : 여기 이름 바꾸기
     def _user_type(self, growth_index: float) -> str:
         if growth_index >= 85:
-            return "날카로운 매"
+            return "숲을 지배한 코알라"
         if growth_index >= 70:
-            return "steady_climber"
+            return "뿌리 깊은 코알라"
         if growth_index >= 55:
-            return "growing_solver"
-        return "new_challenger"
+            return "번개 맞은 코알라"
+        return "잠재력 폭발 아기 코알라"
 
-    # TODO: 여기 멘트 변경?
+    # TODO: 여기 멘트 변경
     def _metrics_comment(self, weakest_metric:str) -> str:
         mapping = {
-            "accuracy": "제약사항 확인 후 풀이 시작 습관을 강화하세요.",
-            "independence": "힌트 요청 전 15분 자가 시도 루틴을 적용하세요.",
-            "efficiency": "목표 시간복잡도를 먼저 정하고 풀이를 선택하세요.",
-            "consistency": "짧은 일일 학습 루틴으로 주간 연속성을 높이세요.",
+            "accuracy": "유칼립투스 잎을 꼼꼼히 고르듯, 문제 속 제약사항(CONSTRAINT)을 한 번 더 살펴보면 실수가 줄어들 거예요.",
+            "independence": "스스로 길을 찾는 코알라가 더 멀리 갈 수 있어요. 힌트를 보기 전 딱 5분만 더 고민해볼까요?",
+            "efficiency": "속도라는 날개를 달아볼 시간! 코드를 짜기 전, 이 문제에 가장 어울리는 시간복잡도가 무엇일지 먼저 그려보세요.",
+            "consistency": "나무 위에서 매일 조금씩 쉬어가듯, 짧더라도 매일 학습하는 습관이 예진님의 가장 큰 무기가 될 거예요.",
         }
-        return mapping.get(weakest_metric, "4대 지표의 균형을 유지하세요.")
+        return mapping.get(
+            weakest_metric,
+            "모든 지표가 골고루 성장하고 있어요! 이 균형을 유지하며 다음 단계로 나아가봐요."
+        )
 
+    # 좀 더 전문적인 버전,,
+    # def _metrics_comment(self, weakest_metric:str) -> str:
+    #     mapping = {
+    #         "accuracy": "문제의 요구사항을 로직으로 전환하는 과정에서 미세한 누수가 발생하고 있습니다. 제약 조건(Constraint)의 엄격한 준수가 필요합니다.",
+    #         "independence": "문제 해결 과정에서 외부 의존성이 높게 측정되었습니다. 스스로 로직을 설계하고 검증하는 완결성 강화가 시급합니다.",
+    #         "efficiency": "구현의 정확성에 비해 자원 활용 효율이 아쉽습니다. 알고리즘 선택 전, 데이터 규모에 따른 최적 복잡도를 산정하는 습관이 필요합니다.",
+    #         "consistency": "학습 데이터의 밀도가 불규칙합니다. 실력의 정체기를 돌파하기 위해서는 일정한 리듬의 규칙적인 훈련 로그가 뒷받침되어야 합니다.",
+    #     }
+    # return mapping.get(weakest_metric, "전반적인 지표가 균형 있게 성장 중입니다. 현재의 학습 템포를 유지하며 난이도를 점진적으로 높여보세요.")
 
-    # TODO: llm text 기능 추가되면 삭제
-    def _recommended_action(self, weakest_metric: str) -> str:
-        mapping={
-            "accuracy": "문제마다 CONSTRAINT를 먼저 표시하고 풀이를 시작하세요.",
-            "independence": "한 문제당 힌트 없이 1회 완주 후 질문하세요.",
-            "efficiency": "N 범위를 기준으로 O(...) 목표를 먼저 선언하세요.",
-            "consistency": "하루 20분씩 주 5회 고정 학습 슬롯을 잡으세요.",
-        }
-        return mapping.get(weakest_metric, "취약 지표 중심으로 다음 주 계획을 세우세요.")
 
     def _clamp(self, value:float, lo:float, hi:float) -> float:
         return max(lo, min(hi, value))
