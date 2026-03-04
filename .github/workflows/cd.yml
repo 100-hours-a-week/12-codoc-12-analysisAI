@@ -82,7 +82,7 @@ jobs:
             "DEPLOY_TAG=${DEPLOY_TAG}" \
             "CONTAINER_NAME=analysis_api_server" \
             "HOST_PORT=8010" \
-            "APP_PORT=8010" \
+            "APP_PORT=8000" \
             "HEALTH_PATH=/" \
             "SSM_PARAM_NAME=analysis-core" \
             > codedeploy/deploy.env
