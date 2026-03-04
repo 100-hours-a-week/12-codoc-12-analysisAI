@@ -18,3 +18,7 @@ hooks:
     - location: scripts/deploy_container.sh
       timeout: 900
       runas: ubuntu
+  ValidateService:
+    - location: scripts/validate_service.sh
+      timeout: 180
+      runas: ubuntu
