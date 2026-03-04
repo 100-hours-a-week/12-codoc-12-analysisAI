@@ -21,13 +21,57 @@ jobs:
     env:
       IS_PROD: ${{ github.ref_name == 'main' }}
       IS_DEV_BRANCH: ${{ github.ref_name != 'main' }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_ACCESS_KEY_ID: ${{ github.ref_name != 'main' && secrets.AWS_ACCESS_KEY_ID_DEV || secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ github.ref_name != 'main' && secrets.AWS_SECRET_ACCESS_KEY_DEV || secrets.AWS_SECRET_ACCESS_KEY }}
-      AI_INSTANCE_ID: ${{ github.ref_name != 'main' && secrets.AI_INSTANCE_ID_DEV || secrets.AI_INSTANCE_ID }}
-      AI_ENV: ${{ github.ref_name != 'main' && secrets.AI_ENV_DEV || secrets.AI_ENV }}
+      AI_INSTANCE_ID: ${{ secrets.AI_INSTANCE_ID }}
+      QDRANT_PROD: ${{ secrets.QDRANT_PROD }}
+      RAW_ENV_PROD: ${{ secrets.ENV_PROD }}
 
     steps:
+      - name: Load ENV_PROD
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RAW_ENV_PROD:-}" ]; then
+            echo "ENV_PROD is empty"
+            exit 1
+          fi
+
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
+              echo "Invalid key in ENV_PROD: $key"
+              exit 1
+            fi
+
+            case "$key" in
+              AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|DISCORD_WEBHOOK)
+                echo "$key=$value" >> "$GITHUB_ENV"
+                ;;
+            esac
+          done <<< "$RAW_ENV_PROD"
+
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION DISCORD_WEBHOOK; do
+            if [ -z "${!k:-}" ]; then
+              echo "Missing required key in ENV_PROD: $k"
+              exit 1
+            fi
+          done
+
+          if [ -z "${AI_INSTANCE_ID:-}" ]; then
+            echo "Missing required secret: AI_INSTANCE_ID"
+            exit 1
+          fi
+
+          if [ -z "${QDRANT_PROD:-}" ]; then
+            echo "Missing required secret: QDRANT_PROD"
+            exit 1
+          fi
+
       # 1) AWS 인증
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -53,7 +97,7 @@ jobs:
                 \"set -e\",
                 \"mkdir -p /home/ubuntu/analysis/shared\",
                 \"cat > ${ENV_PATH} << 'EOF'\",
-                \"${{ env.AI_ENV }}\",
+                \"${{ env.QDRANT_PROD }}\",
                 \"EOF\",
                 \"chmod 600 ${ENV_PATH}\",
                 \"chown ubuntu:ubuntu ${ENV_PATH}\",
@@ -145,4 +189,4 @@ jobs:
               ]
             }]
           }" \
-          ${{ secrets.DISCORD_WEBHOOK }}
+          "${DISCORD_WEBHOOK}"
