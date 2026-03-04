@@ -5,8 +5,9 @@ CONFIG_FILE_PRIMARY="/home/ubuntu/analysis/codedeploy-bundle/deploy.env"
 CONFIG_FILE_FALLBACK="/home/ubuntu/analysis/shared/deploy.env"
 HOST_PORT="8000"
 HEALTH_PATH="/"
+HEALTH_HOST="127.0.0.1"
 CONTAINER_NAME="analysis_ai"
-HEALTH_MAX_RETRIES="20"
+HEALTH_MAX_RETRIES="60"
 HEALTH_INTERVAL_SECONDS="3"
 
 if [ -f "$CONFIG_FILE_PRIMARY" ]; then
@@ -24,14 +25,15 @@ fi
 
 HOST_PORT="${HOST_PORT:-8000}"
 HEALTH_PATH="${HEALTH_PATH:-/}"
+HEALTH_HOST="${HEALTH_HOST:-127.0.0.1}"
 CONTAINER_NAME="${CONTAINER_NAME:-analysis_ai}"
 HEALTH_MAX_RETRIES="${HEALTH_MAX_RETRIES:-20}"
 HEALTH_INTERVAL_SECONDS="${HEALTH_INTERVAL_SECONDS:-3}"
-HEALTH_URL="http://localhost:${HOST_PORT}${HEALTH_PATH}"
+HEALTH_URL="http://${HEALTH_HOST}:${HOST_PORT}${HEALTH_PATH}"
 
 # Blue/Green green instance warm-up can take longer depending on image pull/startup.
 for ((i=1; i<=HEALTH_MAX_RETRIES; i++)); do
-  if curl -fsS --connect-timeout 2 --max-time 5 "$HEALTH_URL" | grep -Eqi "healthy|ok|up"; then
+  if curl -4 -fsS --connect-timeout 2 --max-time 5 "$HEALTH_URL" | grep -Eqi "healthy|ok|up"; then
     echo "[deploy] health check passed: $HEALTH_URL"
     exit 0
   fi
