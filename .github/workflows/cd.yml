@@ -99,6 +99,47 @@ jobs:
         run: |
           set -euo pipefail
 
+          ACTIVE_DEPLOYMENT_ID=$(aws deploy list-deployments \
+            --application-name "${CODEDEPLOY_APP}" \
+            --deployment-group-name "${CODEDEPLOY_GROUP}" \
+            --include-only-statuses Created Queued InProgress Ready \
+            --query 'deployments[0]' \
+            --output text)
+
+          if [ "${ACTIVE_DEPLOYMENT_ID}" != "None" ]; then
+            echo "Active deployment found: ${ACTIVE_DEPLOYMENT_ID}"
+            aws deploy stop-deployment \
+              --deployment-id "${ACTIVE_DEPLOYMENT_ID}" \
+              --auto-rollback-enabled >/dev/null || true
+
+            ACTIVE_STATUS="Unknown"
+            for i in $(seq 1 40); do
+              ACTIVE_STATUS=$(aws deploy get-deployment \
+                --deployment-id "${ACTIVE_DEPLOYMENT_ID}" \
+                --query 'deploymentInfo.status' \
+                --output text)
+
+              case "${ACTIVE_STATUS}" in
+                Succeeded|Failed|Stopped)
+                  echo "Previous deployment finished with status: ${ACTIVE_STATUS}"
+                  break
+                  ;;
+                *)
+                  echo "Waiting previous deployment to finish: ${ACTIVE_STATUS} (${i}/40)"
+                  sleep 10
+                  ;;
+              esac
+            done
+
+            case "${ACTIVE_STATUS}" in
+              Succeeded|Failed|Stopped) ;;
+              *)
+                echo "Previous deployment did not finish in time: ${ACTIVE_STATUS}"
+                exit 1
+                ;;
+            esac
+          fi
+
           DEPLOYMENT_ID=$(aws deploy create-deployment \
             --application-name "${CODEDEPLOY_APP}" \
             --deployment-group-name "${CODEDEPLOY_GROUP}" \
