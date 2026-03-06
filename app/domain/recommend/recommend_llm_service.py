@@ -1,5 +1,4 @@
 import json
-import os
 import re
 from typing import Any
 
@@ -35,6 +34,7 @@ class RecommendLlmService:
         similar_user_count = recommendation_context.get("similar_user_count", 0)
         collaborative_basis = recommendation_context.get("collaborative_basis", "")
         starter_basis = recommendation_context.get("starter_basis", "")
+        focus_tags = weak_tags or matched_tags or tags[:2]
 
         # TODO : 프롬프트 엔지니어링 고도화 필요
         system_prompt = (
@@ -49,6 +49,7 @@ class RecommendLlmService:
         - 시나리오: {scenario}
         - 사용자 레벨: {user_level}
         - 취약 태그: {weak_tags}
+        - 현재 보완 포인트 : {focus_tags}
         
         [추천 문제 정보]
         - 제목: {title}
@@ -163,22 +164,14 @@ class RecommendLlmService:
     def _fallback_reason(self, *, scenario:str, weak_tags: list[str], recommendation_context: dict[str, Any],) -> str:
         recommendation_type = recommendation_context.get("recommendation_type", "")
         matched_tags = recommendation_context.get("matched_tags", [])
+        focus_tags = weak_tags or matched_tags
+        focus = ", ".join(focus_tags[::2]) if focus_tags else "핵심 개념"
 
         if recommendation_type == "collaborative":
-            if matched_tags:
-                return (
-                    f"비슷한 풀이 패턴을 보인 사용자들이 해결한 문제 중 "
-                    f"{', '.join(matched_tags[:2])} 보완에 도움이 될 문제예요."
-                )
-            if weak_tags:
-                return (
-                    f"유사한 어려움을 겪은 사용자들의 풀이 흐름을 바탕으로 "
-                    f"{', '.join(weak_tags[:2])} 보완에 맞춰 추천한 문제예요."
-                )
-            return "비슷한 풀이 패턴을 보인 사용자들의 학습 흐름을 바탕으로 추천한 문제예요."
+            return f"유사한 풀이 패턴에서 자주 막히는 {focus} 보완에 도움이 되는 문제예요."
 
         if scenario == "NEW":
-            return "초기 학습 흐름을 잡고 핵심 개념을 점검하기 좋도록 추천한 문제예요."
-        return "사용자의 취약 태그와 유사한 학습 패턴을 바탕으로 추천한 문제예요."
+            return f"초기 학습 흐름을 잡고 {focus}을 안정적으로 점검하기 좋은 문제예요."
+        return f"현재 학습 단계에서 {focus}을 보완하며 풀이 흐름을 정리하기 좋은 문제예요."
 
 recommend_llm_service = RecommendLlmService()

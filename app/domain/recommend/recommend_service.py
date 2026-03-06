@@ -1,6 +1,4 @@
 # 문제 추천 수식
-
-
 from app.database.vector_db import vector_db
 
 
@@ -16,11 +14,11 @@ class RecommendService:
         challenge_problem_ids: list[int],
         limit: int = 5,
     ):
-        # 문제 id 수정 => 최대 10개 정도 추려서 넣어놓기 (초기 사용자가 안 풀 것 같은 문제로)
+
         static_pool_by_level = {
-            "newbie": [1, 2, 3, 4, 5, 6, 7, 8],
-            "pupil": [1, 2, 3, 4, 5, 6, 7, 8],
-            "specialist": [1, 2, 3, 4, 5, 6, 7, 8],
+            "newbie": [1, 22, 23, 24, 25, 26, 40],
+            "pupil": [27, 28, 29, 30, 31, 11, 32],
+            "specialist": [8, 33, 34, 35, 36, 37, 38, 39],
         }
 
         # 유저 레벨이 알 수 없는 값이라면 newbie로 지정
@@ -43,14 +41,15 @@ class RecommendService:
         }
 
     async def get_collaborative_recommendations(
-        self, user_id: int, current_problem_id: int, exclude_ids: list[int] = None
+        self, user_id: int, current_problem_id: int, exclude_ids: list[int] = None, limit: int =5,
     ):
         # 1. 현재 사용자의 가장 최신 기억 가져오기
         user_memories, _ = self.vector_db.client.scroll(
             collection_name="User_memories",
             scroll_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
-            limit=1,
+            limit=100,
             with_vectors=True,
+            with_payload=True,
         )
 
         if not user_memories:
@@ -59,6 +58,7 @@ class RecommendService:
 
         target_memory = user_memories[0]
         target_vector = target_memory.vector
+        target_payload = target_memory.payload or {}
         target_weak_tags = set(target_memory.payload.get("weak_tags", []))
 
         # 제외할 문제 목록 = 이미 푼 문제 + 현재 도전 중인 문제
@@ -74,7 +74,7 @@ class RecommendService:
             query_filter={
                 "must_not": [{"key": "user_id", "match": {"value": user_id}}]
             },
-            limit=5,
+            limit=30,
             with_payload=True,
         ).points
 
@@ -117,21 +117,24 @@ class RecommendService:
         sorted_recommendations = sorted(
             candidate_scores.items(), key=lambda x: x[1], reverse=True
         )
-        top_3_ids = [str(p_id) for p_id, score in sorted_recommendations[:3]]
+        top_ids = [str(p_id) for p_id, score in sorted_recommendations[:limit]]
 
-        top_problem_id = int(top_3_ids[0])
-        top_matched_tags = list(candidate_tag_matches.get(top_problem_id, set()))
+        all_matched_tags = set()
+        for pid in top_ids:
+            all_matched_tags.update(candidate_tag_matches.get(int(pid), set()))
+        # top_problem_id = int(top_ids[0])
+        # top_matched_tags = list(candidate_tag_matches.get(top_problem_id, set()))
 
-        print(f"🎯 [DEBUG] 최종 추천 후보 리스트: {top_3_ids}")
+        print(f"🎯 [DEBUG] 최종 추천 후보 리스트: {top_ids}")
 
         return {
             "user_id": user_id,
-            "recommended_problem_ids": top_3_ids,
+            "recommended_problem_ids": top_ids,
             "weak_tags": list(target_weak_tags),
             "reason_context": {
                 "recommendation_type": "collaborative",
                 "similar_user_count": len(similar_users),
-                "matched_tags": top_matched_tags,
+                "matched_tags": list(all_matched_tags),
                 "collaborative_basis": "비슷한 취약 태그와 풀이 패턴을 보인 사용자들이 해결한 문제를 기반으로 추천",
             },
         }
