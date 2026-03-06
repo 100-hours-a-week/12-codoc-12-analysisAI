@@ -17,14 +17,17 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       publish_image: true
-    secrets: inherit
+    secrets:
+      ENV_DEV: ${{ secrets.ENV_DEV }}
+      ENV_PROD: ${{ secrets.ENV_DEV }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
   deploy:
     needs: ci
     runs-on: ubuntu-latest
     env:
       IS_PROD: ${{ github.ref_name == 'main' }}
-      RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+      RAW_ENV_CONFIG: ${{ secrets.ENV_DEV }}
 
     steps:
       - name: Checkout
