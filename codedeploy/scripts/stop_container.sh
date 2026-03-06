@@ -3,7 +3,7 @@ set -euo pipefail
 
 CONFIG_FILE_PRIMARY="/home/ubuntu/analysis/codedeploy-bundle/deploy.env"
 CONFIG_FILE_FALLBACK="/home/ubuntu/analysis/shared/deploy.env"
-CONTAINER_NAME="analysis_ai"
+CONTAINER_NAME="analysis_api_server"
 
 if [ -f "$CONFIG_FILE_PRIMARY" ]; then
   CONFIG_FILE="$CONFIG_FILE_PRIMARY"
@@ -18,6 +18,6 @@ if [ -n "$CONFIG_FILE" ]; then
   source "$CONFIG_FILE"
 fi
 
-CONTAINER_NAME="${CONTAINER_NAME:-analysis_ai}"
+CONTAINER_NAME="${CONTAINER_NAME:-analysis_api_server}"
 
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
