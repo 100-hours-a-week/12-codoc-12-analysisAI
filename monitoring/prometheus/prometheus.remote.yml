@@ -15,11 +15,15 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets:
+          - prometheus:9090
           - localhost:9090
 
   # analysis API metrics endpoint (/metrics) from autoscaled EC2 targets
   - job_name: analysis-api
     metrics_path: /metrics
+    static_configs:
+      - targets:
+          - api_server:8000
     ec2_sd_configs:
       - region: __AWS_REGION__
         port: 8010
@@ -29,7 +33,7 @@ scrape_configs:
               - __EC2_TAG_VALUE__
     relabel_configs:
       - source_labels: [__meta_ec2_instance_state]
-        regex: running
+        regex: (running|)
         action: keep
       - source_labels: [__meta_ec2_private_ip]
         regex: (.+)
@@ -38,6 +42,9 @@ scrape_configs:
 
   # host resource metrics from autoscaled EC2 targets
   - job_name: analysis-node-exporter
+    static_configs:
+      - targets:
+          - node-exporter:9100
     ec2_sd_configs:
       - region: __AWS_REGION__
         port: 9100
@@ -47,7 +54,7 @@ scrape_configs:
               - __EC2_TAG_VALUE__
     relabel_configs:
       - source_labels: [__meta_ec2_instance_state]
-        regex: running
+        regex: (running|)
         action: keep
       - source_labels: [__meta_ec2_private_ip]
         regex: (.+)
@@ -56,6 +63,9 @@ scrape_configs:
 
   # container metrics from autoscaled EC2 targets
   - job_name: analysis-cadvisor
+    static_configs:
+      - targets:
+          - cadvisor:8080
     ec2_sd_configs:
       - region: __AWS_REGION__
         port: 8080
@@ -65,7 +75,7 @@ scrape_configs:
               - __EC2_TAG_VALUE__
     relabel_configs:
       - source_labels: [__meta_ec2_instance_state]
-        regex: running
+        regex: (running|)
         action: keep
       - source_labels: [__meta_ec2_private_ip]
         regex: (.+)
@@ -74,6 +84,9 @@ scrape_configs:
 
   # GPU metrics from autoscaled EC2 targets (if dcgm exporter is running)
   - job_name: analysis-dcgm-exporter
+    static_configs:
+      - targets:
+          - dcgm-exporter:9400
     ec2_sd_configs:
       - region: __AWS_REGION__
         port: 9400
@@ -83,7 +96,7 @@ scrape_configs:
               - __EC2_TAG_VALUE__
     relabel_configs:
       - source_labels: [__meta_ec2_instance_state]
-        regex: running
+        regex: (running|)
         action: keep
       - source_labels: [__meta_ec2_private_ip]
         regex: (.+)
