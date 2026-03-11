@@ -102,3 +102,71 @@ scrape_configs:
         regex: (.+)
         replacement: ${1}:9400
         target_label: __address__
+
+  # Spring app + infra metrics from EC2 targets
+  - job_name: promtail
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 9080
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+
+  - job_name: node
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 9100
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+
+  - job_name: app
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 8080
+    metrics_path: /api/actuator/prometheus
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+      - source_labels: [__meta_ec2_tag_App]
+        target_label: application
+
+  - job_name: app_chatai
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 8000
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+      - source_labels: [__meta_ec2_tag_App]
+        regex: ChatAI
+        action: keep
