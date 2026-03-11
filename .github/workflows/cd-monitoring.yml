@@ -1,0 +1,97 @@
+name: monitoring-cd
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "monitoring/**"
+      - ".github/workflows/cd-monitoring.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: monitoring-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-monitoring:
+    runs-on: ubuntu-latest
+    env:
+      IS_PROD: ${{ github.ref_name == 'main' }}
+      RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load environment config
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW_ENV_CONFIG:-}" ]; then
+            echo "ENV_DEV / ENV_PROD secret is empty"
+            exit 1
+          fi
+
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
+              echo "Invalid key in ENV config: $key"
+              exit 1
+            fi
+
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done <<< "$RAW_ENV_CONFIG"
+
+      - name: Validate required vars
+        run: |
+          set -euo pipefail
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION DEPLOY_BUCKET MONITORING_DEPLOY_KEY MONITORING_CODEDEPLOY_APP MONITORING_CODEDEPLOY_GROUP; do
+            if [ -z "${!k:-}" ]; then
+              echo "Missing required var: $k"
+              exit 1
+            fi
+          done
+
+      - name: Render monitoring deploy env
+        run: |
+          set -euo pipefail
+          printf "%s\n" \
+            "AWS_REGION=${AWS_REGION}" \
+            "MONITORING_EC2_TAG_KEY=${MONITORING_EC2_TAG_KEY:-MonitoringTarget}" \
+            "MONITORING_EC2_TAG_VALUE=${MONITORING_EC2_TAG_VALUE:-analysis}" \
+            "GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}" \
+            "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}" \
+            > monitoring/deploy.env
+
+      - name: Upload monitoring bundle to S3
+        run: |
+          set -euo pipefail
+          cd monitoring
+          zip -r /tmp/monitoring-deploy.zip .
+          aws s3 cp /tmp/monitoring-deploy.zip "s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY}"
+
+      - name: Create CodeDeploy deployment
+        run: |
+          set -euo pipefail
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name "${MONITORING_CODEDEPLOY_APP}" \
+            --deployment-group-name "${MONITORING_CODEDEPLOY_GROUP}" \
+            --revision "revisionType=S3,s3Location={bucket=${DEPLOY_BUCKET},key=${MONITORING_DEPLOY_KEY},bundleType=zip}" \
+            --query 'deploymentId' \
+            --output text)
+
+          echo "DEPLOYMENT_ID=${DEPLOYMENT_ID}" >> "$GITHUB_ENV"
+          echo "Created monitoring deployment: ${DEPLOYMENT_ID}"
+
+      - name: Wait deployment result
+        run: |
+          set -euo pipefail
+          aws deploy wait deployment-successful --deployment-id "${DEPLOYMENT_ID}"
