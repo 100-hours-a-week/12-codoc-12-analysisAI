@@ -8,8 +8,8 @@ services:
       - "--storage.tsdb.retention.time=3d"
       - "--web.enable-lifecycle"
     volumes:
-      - /Users/jehyeok/final/12-codoc-12-analysisAI/monitoring/prometheus/prometheus.remote.yml:/etc/prometheus/prometheus.yml:ro
-      - /Users/jehyeok/final/12-codoc-12-analysisAI/monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - /opt/monitoring/monitoring-server/monitoring/prometheus/prometheus.remote.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/monitoring/monitoring-server/monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - /var/lib/prometheus:/prometheus
     ports:
       - "9090:9090"
@@ -22,7 +22,7 @@ services:
     container_name: monitoring_grafana
     volumes:
       - /var/lib/grafana:/var/lib/grafana
-      - /Users/jehyeok/final/12-codoc-12-analysisAI/monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - /opt/monitoring/monitoring-server/monitoring/grafana/provisioning:/etc/grafana/provisioning
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-codoc12}
@@ -38,7 +38,7 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
     volumes:
-      - /Users/jehyeok/final/12-codoc-12-analysisAI/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /opt/monitoring/monitoring-server/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
       - "9093:9093"
     restart: always
@@ -47,7 +47,7 @@ services:
     image: grafana/loki:3.1.1
     container_name: monitoring_loki
     volumes:
-      - /Users/jehyeok/final/12-codoc-12-analysisAI/monitoring/loki/config.yaml:/etc/loki/config.yaml
+      - /opt/monitoring/monitoring-server/monitoring/loki/config.yaml:/etc/loki/config.yaml
       - /var/lib/loki:/loki
     command: -config.file=/etc/loki/config.yaml
     ports:
