@@ -106,7 +106,7 @@ jobs:
           MONITORING_DEPLOY_DIR="${MONITORING_DEPLOY_DIR:-/opt/monitoring/monitoring-server}"
           REMOTE_ROOT="${MONITORING_DEPLOY_DIR}/current"
           cat > /tmp/ssm-params.json <<EOF
-          {"commands":["bash -lc \"set -euo pipefail; mkdir -p ${MONITORING_DEPLOY_DIR}; aws s3 cp s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY} /tmp/monitoring-deploy.zip; rm -rf ${REMOTE_ROOT}; mkdir -p ${REMOTE_ROOT}; unzip -o /tmp/monitoring-deploy.zip -d ${REMOTE_ROOT}; cd ${REMOTE_ROOT}; if docker compose version >/dev/null 2>&1; then docker compose up -d --remove-orphans; else docker-compose up -d --remove-orphans; fi\""]}
+          {"commands":["bash -lc \"set -euo pipefail; mkdir -p ${MONITORING_DEPLOY_DIR}; aws s3 cp s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY} /tmp/monitoring-deploy.zip; rm -rf ${REMOTE_ROOT}; mkdir -p ${REMOTE_ROOT}; unzip -o /tmp/monitoring-deploy.zip -d ${REMOTE_ROOT}; cd ${REMOTE_ROOT}; if docker compose version >/dev/null 2>&1; then docker compose -f monitoring/docker-compose.monitoring.yml up -d --remove-orphans; else docker-compose -f monitoring/docker-compose.monitoring.yml up -d --remove-orphans; fi\""]}
           EOF
 
           COMMAND_ID=$(aws ssm send-command \
