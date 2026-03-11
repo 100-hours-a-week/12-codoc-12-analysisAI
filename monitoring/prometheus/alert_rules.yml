@@ -1,0 +1,105 @@
+groups:
+  - name: analysis-api-alerts
+    rules:
+      - alert: ApiHighErrorRate
+        expr: |
+          (
+            sum(rate(codoc_http_errors_total[5m]))
+            /
+            sum(rate(codoc_http_requests_total[5m]))
+          ) > 0.05
+          and sum(rate(codoc_http_requests_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API error rate is high"
+          description: "Error rate exceeded 5% for 5 minutes."
+
+      - alert: ApiRequestRateDrop
+        expr: sum(rate(codoc_http_requests_total[5m])) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API request rate is very low"
+          description: "Request rate dropped below 0.1 req/s for 10 minutes."
+
+      - alert: ReportApiHighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(codoc_http_request_duration_seconds_bucket{path="/api/v2/reports"}[5m]))
+          ) > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Report API p95 latency is high"
+          description: "Report API p95 latency exceeded 3 seconds for 10 minutes."
+
+  - name: batch-failure-alerts
+    rules:
+      - alert: ReportBatchHighFailureRate
+        expr: |
+          (
+            sum(rate(codoc_report_batch_total{status="fail"}[10m]))
+            /
+            sum(rate(codoc_report_batch_total[10m]))
+          ) > 0.1
+          and sum(rate(codoc_report_batch_total[10m])) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Report batch failure rate is high"
+          description: "Report batch failure rate exceeded 10% for 10 minutes."
+
+      - alert: RecommendBatchHighFailureRate
+        expr: |
+          (
+            sum(rate(codoc_recommend_request_total{status="fail"}[10m]))
+            /
+            sum(rate(codoc_recommend_request_total[10m]))
+          ) > 0.1
+          and sum(rate(codoc_recommend_request_total[10m])) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Recommend batch failure rate is high"
+          description: "Recommend batch failure rate exceeded 10% for 10 minutes."
+
+  - name: host-resource-alerts
+    rules:
+      - alert: HostHighCPU
+        expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 85
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host CPU usage is high"
+          description: "CPU usage has been above 85% for 10 minutes."
+
+      - alert: HostHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host memory usage is high"
+          description: "Memory usage has been above 90% for 10 minutes."
+
+      - alert: HostLowDisk
+        expr: |
+          (
+            node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint="/"}
+            /
+            node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint="/"}
+          ) * 100 < 15
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host disk free space is low"
+          description: "Root disk free space has stayed below 15% for 15 minutes."

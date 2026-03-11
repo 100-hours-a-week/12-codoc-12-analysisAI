@@ -4,6 +4,11 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from app.common.observability.metrics import (
+    LLM_COST_PER_REQUEST_USD,
+    LLM_COST_TOTAL_USD,
+    LLM_TOKENS_TOTAL,
+)
 from app.core.config import settings
 
 
@@ -117,6 +122,7 @@ class RecommendLlmService:
                     {"role": "user", "content": user_prompt},
                 ],
             )
+            self._record_usage_metrics(response)
             raw = response.choices[0].message.content or ""
             parsed = self._parse_json(raw)
             print("[DEBUG] LLM raw response:", raw)
@@ -131,6 +137,29 @@ class RecommendLlmService:
             print("[DEBUG] LLM exception detail:", repr(e))
             print("[DEBUG] fallback reason:", fallback)
             return fallback
+
+    def _record_usage_metrics(self, response: Any) -> None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+
+        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+        if total_tokens <= 0:
+            total_tokens = prompt_tokens + completion_tokens
+
+        LLM_TOKENS_TOTAL.labels(service="recommend", token_type="prompt").inc(prompt_tokens)
+        LLM_TOKENS_TOTAL.labels(service="recommend", token_type="completion").inc(completion_tokens)
+        LLM_TOKENS_TOTAL.labels(service="recommend", token_type="total").inc(total_tokens)
+
+        cost_usd = (
+            (prompt_tokens * settings.LLM_INPUT_TOKEN_PRICE_PER_MILLION_USD)
+            + (completion_tokens * settings.LLM_OUTPUT_TOKEN_PRICE_PER_MILLION_USD)
+        ) / 1_000_000
+
+        LLM_COST_TOTAL_USD.labels(service="recommend").inc(cost_usd)
+        LLM_COST_PER_REQUEST_USD.labels(service="recommend").observe(cost_usd)
 
 
     def _parse_json(self, raw: str) -> dict[str, Any]:
