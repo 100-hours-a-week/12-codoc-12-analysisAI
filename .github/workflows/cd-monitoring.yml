@@ -67,7 +67,7 @@ jobs:
             "AWS_REGION=${AWS_REGION}" \
             "MONITORING_EC2_TAG_KEY=${MONITORING_EC2_TAG_KEY:-MonitoringTarget}" \
             "MONITORING_EC2_TAG_VALUE=${MONITORING_EC2_TAG_VALUE:-analysis}" \
-            "MONITORING_DEPLOY_DIR=${MONITORING_DEPLOY_DIR:-/home/ubuntu/monitoring}" \
+            "MONITORING_DEPLOY_DIR=${MONITORING_DEPLOY_DIR:-/opt/monitoring/monitoring-server}" \
             "GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}" \
             "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}" \
             > monitoring/deploy.env
@@ -103,21 +103,21 @@ jobs:
       - name: Deploy monitoring via SSM
         run: |
           set -euo pipefail
-          MONITORING_DEPLOY_DIR="${MONITORING_DEPLOY_DIR:-/home/ubuntu/monitoring}"
+          MONITORING_DEPLOY_DIR="${MONITORING_DEPLOY_DIR:-/opt/monitoring/monitoring-server}"
           REMOTE_ROOT="${MONITORING_DEPLOY_DIR}/current"
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${MONITORING_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy monitoring stack from ${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY}" \
-            --parameters commands="set -euo pipefail, \
-              mkdir -p ${MONITORING_DEPLOY_DIR}, \
-              aws s3 cp s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY} /tmp/monitoring-deploy.zip, \
-              rm -rf ${REMOTE_ROOT}, \
-              mkdir -p ${REMOTE_ROOT}, \
-              unzip -o /tmp/monitoring-deploy.zip -d ${REMOTE_ROOT}, \
-              cd ${REMOTE_ROOT}, \
-              if docker compose version >/dev/null 2>&1; then docker compose up -d --remove-orphans; else docker-compose up -d --remove-orphans; fi" \
+            --parameters commands="bash -lc 'set -euo pipefail; \
+              mkdir -p ${MONITORING_DEPLOY_DIR}; \
+              aws s3 cp s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY} /tmp/monitoring-deploy.zip; \
+              rm -rf ${REMOTE_ROOT}; \
+              mkdir -p ${REMOTE_ROOT}; \
+              unzip -o /tmp/monitoring-deploy.zip -d ${REMOTE_ROOT}; \
+              cd ${REMOTE_ROOT}; \
+              if docker compose version >/dev/null 2>&1; then docker compose up -d --remove-orphans; else docker-compose up -d --remove-orphans; fi'" \
             --query "Command.CommandId" \
             --output text)
 
