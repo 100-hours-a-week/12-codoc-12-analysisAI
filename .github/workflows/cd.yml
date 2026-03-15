@@ -72,18 +72,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          CONTAINER_NAME="${CONTAINER_NAME:-analysis_api_server}"
+          DEV_DEPLOY_SCRIPT_PATH="${DEV_DEPLOY_SCRIPT_PATH:-/home/ubuntu/codoc/scripts/deploy-dev.sh}"
+          CONTAINER_NAME="${CONTAINER_NAME:-codoc-analysis-ai}"
           HOST_PORT="${HOST_PORT:-8010}"
           APP_PORT="${APP_PORT:-8000}"
           HEALTH_PATH="${HEALTH_PATH:-/}"
           APP_ENV_PATH="${APP_ENV_PATH:-/home/ubuntu/app/.env}"
-          APP_ENV_DIR=$(dirname "${APP_ENV_PATH}")
           APP_ENV_CONTENT_BASE64=$(printf '%s\n' "$RAW_ENV_CONFIG" | \
-            grep -Ev '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|ECR_REGISTRY|ECR_REPO|CODEDEPLOY_APP|CODEDEPLOY_GROUP|DEPLOY_BUCKET|DEPLOY_KEY|DISCORD_WEBHOOK|CONTAINER_NAME|HOST_PORT|APP_PORT|HEALTH_PATH|SSM_PARAM_NAME|APP_ENV_PATH)=' | \
+            grep -Ev '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|ECR_REGISTRY|ECR_REPO|CODEDEPLOY_APP|CODEDEPLOY_GROUP|DEPLOY_BUCKET|DEPLOY_KEY|DISCORD_WEBHOOK|CONTAINER_NAME|HOST_PORT|APP_PORT|HEALTH_PATH|SSM_PARAM_NAME|APP_ENV_PATH|DEV_DEPLOY_SCRIPT_PATH)=' | \
             base64 -w0)
 
           cat > /tmp/ssm-params.json <<EOF
-          {"commands":["bash -lc \"set -euo pipefail; mkdir -p ${APP_ENV_DIR}; printf '%s' '${APP_ENV_CONTENT_BASE64}' | base64 -d > ${APP_ENV_PATH}; aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}; docker pull ${ECR_REGISTRY}/${ECR_REPO}:dev; docker rm -f ${CONTAINER_NAME} >/dev/null 2>&1 || true; docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p ${HOST_PORT}:${APP_PORT} --env-file ${APP_ENV_PATH} ${ECR_REGISTRY}/${ECR_REPO}:dev; sleep 5; curl -fsS http://localhost:${HOST_PORT}${HEALTH_PATH} >/dev/null; docker image prune -f >/dev/null 2>&1 || true\""]}
+          {"commands":["bash -lc \"set -euo pipefail; AWS_REGION='${AWS_REGION}' ECR_REGISTRY='${ECR_REGISTRY}' ECR_REPO='${ECR_REPO}' IMAGE_TAG='dev' CONTAINER_NAME='${CONTAINER_NAME}' HOST_PORT='${HOST_PORT}' APP_PORT='${APP_PORT}' HEALTH_PATH='${HEALTH_PATH}' APP_ENV_PATH='${APP_ENV_PATH}' APP_ENV_CONTENT_BASE64='${APP_ENV_CONTENT_BASE64}' '${DEV_DEPLOY_SCRIPT_PATH}'\""]}
           EOF
 
           COMMAND_ID=$(aws ssm send-command \
