@@ -1,0 +1,55 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: monitoring_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=3d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - /opt/monitoring/monitoring-server/current/prometheus/prometheus.remote.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/monitoring/monitoring-server/current/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - /var/lib/prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - alertmanager
+    restart: always
+
+  grafana:
+    image: grafana/grafana:11.1.5
+    container_name: monitoring_grafana
+    volumes:
+      - /var/lib/grafana:/var/lib/grafana
+      - /opt/monitoring/monitoring-server/current/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-codoc12}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: always
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: monitoring_alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    volumes:
+      - /opt/monitoring/monitoring-server/current/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    restart: always
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: monitoring_loki
+    volumes:
+      - /opt/monitoring/monitoring-server/current/loki/config.yaml:/etc/loki/config.yaml
+      - /var/lib/loki:/loki
+    command: -config.file=/etc/loki/config.yaml
+    ports:
+      - "3100:3100"
+    restart: always
