@@ -1,4 +1,8 @@
+from typing import Tuple
+
 from prometheus_client import Counter, Gauge, Histogram
+from starlette.requests import Request
+from starlette.routing import Match
 
 HTTP_REQUESTS_TOTAL = Counter(
     "codoc_http_requests_total",
@@ -23,6 +27,43 @@ HTTP_IN_PROGRESS = Gauge(
     "codoc_http_in_progress",
     "Number of in-progress HTTP requests.",
     ["method"],
+)
+
+FASTAPI_APP_INFO = Gauge(
+    "fastapi_app_info",
+    "FastAPI application information.",
+    ["app_name"],
+)
+
+FASTAPI_REQUESTS_TOTAL = Counter(
+    "fastapi_requests_total",
+    "Total count of requests by method and path.",
+    ["method", "path", "app_name"],
+)
+
+FASTAPI_RESPONSES_TOTAL = Counter(
+    "fastapi_responses_total",
+    "Total count of responses by method, path and status codes.",
+    ["method", "path", "status_code", "app_name"],
+)
+
+FASTAPI_REQUEST_DURATION_SECONDS = Histogram(
+    "fastapi_requests_duration_seconds",
+    "Histogram of requests processing time by path (in seconds).",
+    ["method", "path", "app_name"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10),
+)
+
+FASTAPI_EXCEPTIONS_TOTAL = Counter(
+    "fastapi_exceptions_total",
+    "Total count of exceptions raised by path and exception type.",
+    ["method", "path", "exception_type", "app_name"],
+)
+
+FASTAPI_REQUESTS_IN_PROGRESS = Gauge(
+    "fastapi_requests_in_progress",
+    "Gauge of requests by method and path currently being processed.",
+    ["method", "path", "app_name"],
 )
 
 REPORT_BATCH_TOTAL = Counter(
@@ -67,3 +108,24 @@ LLM_COST_PER_REQUEST_USD = Histogram(
     ["service"],
     buckets=(0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05),
 )
+
+
+def resolve_request_path(request: Request) -> Tuple[str, bool]:
+    for route in request.app.routes:
+        match, _ = route.matches(request.scope)
+        if match == Match.FULL:
+            return route.path, True
+    return request.url.path, False
+
+
+def record_fastapi_exception(request: Request, exc: BaseException, app_name: str) -> None:
+    path, is_handled_path = resolve_request_path(request)
+    if not is_handled_path:
+        return
+
+    FASTAPI_EXCEPTIONS_TOTAL.labels(
+        method=request.method,
+        path=path,
+        exception_type=type(exc).__name__,
+        app_name=app_name,
+    ).inc()
