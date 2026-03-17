@@ -1,10 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUNDLE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE_PRIMARY="/home/ubuntu/analysis/codedeploy-bundle/deploy.env"
 CONFIG_FILE_FALLBACK="/home/ubuntu/analysis/shared/deploy.env"
 APP_ENV_FILE_PRIMARY="/home/ubuntu/app/.env"
 APP_ENV_FILE_FALLBACK="/home/ubuntu/analysis/shared/.env"
+RUNTIME_DIR="/home/ubuntu/analysis/runtime"
+PROMTAIL_RUNTIME_DIR="${RUNTIME_DIR}/promtail"
+EXPORTER_COMPOSE_FILE="${BUNDLE_ROOT}/monitoring/analysis-exporters.compose.yml"
 
 if [ -f "$CONFIG_FILE_PRIMARY" ]; then
   CONFIG_FILE="$CONFIG_FILE_PRIMARY"
@@ -56,7 +61,24 @@ DOCKER_ENV_ARGS=()
 if [ -f "$APP_ENV_FILE_PRIMARY" ]; then
   DOCKER_ENV_ARGS+=(--env-file "$APP_ENV_FILE_PRIMARY")
 elif [ -f "$APP_ENV_FILE_FALLBACK" ]; then
-  DOCKER_ENV_ARGS+=(--env-file "$APP_ENV_FILE_FALLBACK")
+  mkdir -p "$(dirname "$APP_ENV_FILE_PRIMARY")"
+  cp "$APP_ENV_FILE_FALLBACK" "$APP_ENV_FILE_PRIMARY"
+  DOCKER_ENV_ARGS+=(--env-file "$APP_ENV_FILE_PRIMARY")
+fi
+
+mkdir -p "$PROMTAIL_RUNTIME_DIR"
+
+MONITOR_HOSTNAME="$(hostname | grep -oE '[0-9]+(-[0-9]+){3}' | sed 's/-/./g; s/$/:9080/')"
+if [[ -z "$MONITOR_HOSTNAME" ]]; then
+  MONITOR_HOSTNAME="$(hostname)"
+fi
+
+if [ -f "$APP_ENV_FILE_PRIMARY" ]; then
+  if grep -q '^monitor_hostname=' "$APP_ENV_FILE_PRIMARY"; then
+    sed -i "s/^monitor_hostname=.*/monitor_hostname=${MONITOR_HOSTNAME}/" "$APP_ENV_FILE_PRIMARY"
+  else
+    echo "monitor_hostname=${MONITOR_HOSTNAME}" >> "$APP_ENV_FILE_PRIMARY"
+  fi
 fi
 
 docker run -d \
@@ -65,5 +87,24 @@ docker run -d \
   -p "${HOST_PORT}:${APP_PORT}" \
   "${DOCKER_ENV_ARGS[@]}" \
   "$IMAGE_URI"
+
+if [ -f "$EXPORTER_COMPOSE_FILE" ]; then
+  if command -v docker-compose >/dev/null 2>&1; then
+    EXPORTER_COMPOSE="docker-compose"
+  else
+    EXPORTER_COMPOSE="docker compose"
+  fi
+
+  ENV_FILE_FOR_EXPORTERS="$APP_ENV_FILE_PRIMARY"
+  if [ ! -f "$ENV_FILE_FOR_EXPORTERS" ] && [ -f "$APP_ENV_FILE_FALLBACK" ]; then
+    ENV_FILE_FOR_EXPORTERS="$APP_ENV_FILE_FALLBACK"
+  fi
+
+  if [ -f "$ENV_FILE_FOR_EXPORTERS" ]; then
+    $EXPORTER_COMPOSE -f "$EXPORTER_COMPOSE_FILE" --env-file "$ENV_FILE_FOR_EXPORTERS" up -d
+  else
+    $EXPORTER_COMPOSE -f "$EXPORTER_COMPOSE_FILE" up -d
+  fi
+fi
 
 docker image prune -f >/dev/null 2>&1 || true
