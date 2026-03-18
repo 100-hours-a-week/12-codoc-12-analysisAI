@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     REPORT_LLM_BASE_URL: str = "http://localhost:8001/v1"
     REPORT_LLM_API_KEY: str = "EMPTY"
     REPORT_LLM_MODEL: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
-    REPORT_LLM_TIMEOUT_SEC: float = 30
+    REPORT_LLM_TIMEOUT_SEC: float = 30.0
 
     # Recommend LLM
     RECOMMEND_LLM_BASE_URL: str = "http://localhost:8001/v1"
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     RECOMMEND_LLM_MODEL: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
     LLM_INPUT_TOKEN_PRICE_PER_MILLION_USD: float = 0.0
     LLM_OUTPUT_TOKEN_PRICE_PER_MILLION_USD: float = 0.0
-    RECOMMEND_LLM_TIMEOUT_SEC=20.0
+    RECOMMEND_LLM_TIMEOUT_SEC: float = 20.0
     RECOMMEND_LLM_MAX_CONCURRENCY: int = 8
     RECOMMEND_LLM_ACQUIRE_TIMEOUT_SEC: float = 2.0
 
