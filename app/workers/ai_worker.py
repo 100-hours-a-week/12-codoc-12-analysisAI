@@ -163,7 +163,11 @@ async def handle_recommend(message: AbstractIncomingMessage) -> None:
             "job_id": job_id,
             "status": "SUCCESS",
             "responded_at": _utc_now_iso(),
-            "result": _to_dict(recommend_data),
+            "result": {
+                "code": "SUCCESS",
+                "message": "OK",
+                "data": _to_dict(recommend_data),
+            },
         }
         await _publish_json(RECOMMEND_RESPONSE_QUEUE, success_payload)
         await message.ack()
