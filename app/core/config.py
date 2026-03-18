@@ -7,6 +7,17 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "CodoC-AI"
     VERSION: str = "2.0.0"
     API_PREFIX: str = "/api/v2"
+    
+    # --- RabbitMQ 설정 ---
+    APP_NOTIFICATION_MQ_ENABLED: bool = False
+    RABBITMQ_HOST: str = "localhost"
+    RABBITMQ_PORT: int = 5672
+    RABBITMQ_USERNAME: str = "guest"
+    RABBITMQ_PASSWORD: str = "guest"
+    RABBITMQ_VHOST: str = "/"
+    RABBITMQ_EXCHANGE: str = "custom.problem.exchange"
+    RABBITMQ_CONSUME_QUEUE: str = "custom.problem.request"
+    RABBITMQ_PUBLISH_ROUTING_KEY: str = "custom.problem.response"
 
     # --- Vector DB (Qdrant) 설정 ---
     QDRANT_HOST: str = "localhost"
@@ -22,6 +33,13 @@ class Settings(BaseSettings):
     RECOMMEND_LLM_BASE_URL: str = "http://localhost:8001/v1"
     RECOMMEND_LLM_API_KEY: str = "EMPTY"
     RECOMMEND_LLM_MODEL: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
+
+    # OCR LLM
+    OCR_LLM_BASE_URL: str = "http://localhost:8001/v1"
+    OCR_LLM_API_KEY: str = "EMPTY"
+    OCR_LLM_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    
+    
 
     @property
     def QDRANT_URL(self) -> str:

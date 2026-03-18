@@ -29,3 +29,7 @@ class DependencyNotReadyException(BusinessException):
     def __init__(self, message:str = "VectorDB/근거 데이터가 아직 준비되지 않았습니다."):
         super().__init__(errorCode="DEPENDENCY_NOT_READY", message=message)
 
+# 400 : OCR 처리 실패
+class OcrProcessingException(BusinessException):
+    def __init__(self, message: str = "OCR 처리에 실패했습니다."):
+        super().__init__(errorCode="OCR_400", message=message)
