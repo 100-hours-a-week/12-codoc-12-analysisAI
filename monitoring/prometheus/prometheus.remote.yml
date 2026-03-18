@@ -39,6 +39,9 @@ scrape_configs:
         regex: (.+)
         replacement: ${1}:8010
         target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
 
   # host resource metrics from autoscaled EC2 targets
   - job_name: analysis-node-exporter
@@ -60,6 +63,9 @@ scrape_configs:
         regex: (.+)
         replacement: ${1}:9100
         target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
 
   # container metrics from autoscaled EC2 targets
   - job_name: analysis-cadvisor
@@ -81,6 +87,9 @@ scrape_configs:
         regex: (.+)
         replacement: ${1}:8080
         target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
 
   # GPU metrics from autoscaled EC2 targets (if dcgm exporter is running)
   - job_name: analysis-dcgm-exporter
@@ -102,6 +111,9 @@ scrape_configs:
         regex: (.+)
         replacement: ${1}:9400
         target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
 
   # Spring app + infra metrics from EC2 targets
   - job_name: promtail
@@ -118,6 +130,9 @@ scrape_configs:
       - source_labels: [__meta_ec2_tag_Env]
         regex: prod
         action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
 
   - job_name: node
     ec2_sd_configs:
@@ -133,6 +148,9 @@ scrape_configs:
       - source_labels: [__meta_ec2_tag_Env]
         regex: prod
         action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
 
   - job_name: app
     ec2_sd_configs:
@@ -149,6 +167,9 @@ scrape_configs:
       - source_labels: [__meta_ec2_tag_Env]
         regex: prod
         action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
       - source_labels: [__meta_ec2_tag_App]
         target_label: application
 
@@ -167,6 +188,9 @@ scrape_configs:
       - source_labels: [__meta_ec2_tag_Env]
         regex: prod
         action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
       - source_labels: [__meta_ec2_tag_App]
         regex: ChatAI
         action: keep
