@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     RECOMMEND_LLM_BASE_URL: str = "http://localhost:8001/v1"
     RECOMMEND_LLM_API_KEY: str = "EMPTY"
     RECOMMEND_LLM_MODEL: str = "Qwen/Qwen2.5-32B-Instruct-AWQ"
+    LLM_INPUT_TOKEN_PRICE_PER_MILLION_USD: float = 0.0
+    LLM_OUTPUT_TOKEN_PRICE_PER_MILLION_USD: float = 0.0
 
     @property
     def QDRANT_URL(self) -> str:

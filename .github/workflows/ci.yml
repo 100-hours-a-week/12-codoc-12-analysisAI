@@ -1,12 +1,21 @@
 name: ai-ci
 
 on:
-  # pull_request:
-  #   branches: [dev, main]
-  # push:
-  #   branches: [dev]
-  workflow_dispatch: {}
   workflow_call:
+    inputs:
+      publish_image:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      ENV_DEV:
+        required: false
+      ENV_PROD:
+        required: false
+      DISCORD_WEBHOOK:
+        required: false
+  push:
+    branches: [dev, main]
 
 permissions:
   contents: read
@@ -20,11 +29,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 체크아웃
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 파이썬 설정
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -34,79 +41,56 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
-      # 의존성 설치
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          pip install ruff build
-
-      # # 린트
-      # - name: Lint
-      #   run: ruff check .
-
-      # # 포맷 체크
-      # - name: Format Check
-      #   run: ruff format --check .
-
-      # # 테스트
-      # - name: Tests
-      #   run: |
-      #     if python -c "import importlib.util; import sys; sys.exit(0 if importlib.util.find_spec('pytest') else 1)"; then
-      #       pytest -q
-      #     else
-      #       echo "pytest not installed. Skipping tests."
-      #     fi
-
-      # 의존성 감사(warn-only)
-      - name: Dependency Audit
-        run: |
           pip install pip-audit
-          pip-audit -l || true
 
-      # # 패키징(main만)
-      # - name: Build
-      #   if: github.event_name == 'push' && github.ref == 'refs/heads/chore/ci-cd'
-      #   run: |
-      #     python -m build
-      #     ls -al dist
+      - name: Dependency Audit
+        run: pip-audit -l || true
 
-      # # 아티팩트 업로드(main만)
-      # - name: Upload Artifact
-      #   if: github.event_name == 'push' && github.ref == 'refs/heads/chore/ci-cd'
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: ai-dist-${{ github.sha }}
-      #     path: dist/*
-      #     if-no-files-found: error
-      #     retention-days: 7
+      - name: Load environment config (for notify)
+        if: github.event_name != 'workflow_call'
+        env:
+          RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW_ENV_CONFIG:-}" ]; then
+            echo "ENV_DEV / ENV_PROD secret is empty. notify only skipped."
+            exit 0
+          fi
 
-      # 6. 소스 아티팩트 업로드
-      - name: Upload source artifact
-      #  if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-source-${{ github.sha }}
-          path: ./
-          retention-days: 7
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+            key="${line%%=*}"
+            value="${line#*=}"
+            if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
+              continue
+            fi
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done <<< "$RAW_ENV_CONFIG"
 
       - name: Notify Discord (always)
-        if: always()
+        if: always() && github.event_name != 'workflow_call'
         run: |
+          if [ -z "${DISCORD_WEBHOOK:-}" ]; then
+            echo "DISCORD_WEBHOOK not set. Skip notification."
+            exit 0
+          fi
+
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           BRANCH="${{ github.ref_name }}"
-          EVENT="${{ github.event_name }}"
           ACTOR="${{ github.actor }}"
-          SHA="${{ github.sha }}"
           COMMIT_MSG="${{ github.event.head_commit.message }}"
 
           if [ -z "$COMMIT_MSG" ]; then
             COMMIT_MSG="(커밋 메시지를 이벤트에서 가져올 수 없음)"
           fi
 
-          # 역슬래시, 큰따옴표, 그리고 줄바꿈(\n)을 JSON 규격에 맞게 이스케이프 처리
           COMMIT_MSG_ESCAPED=$(printf '%s' "$COMMIT_MSG" | sed 's/\\/\\\\/g; s/\"/\\\"/g; :a;N;$!ba;s/\n/\\n/g')
 
           if [ "${{ job.status }}" = "success" ]; then
@@ -129,4 +113,88 @@ jobs:
               ]
             }]
           }" \
-          ${{ secrets.DISCORD_WEBHOOK }}
+          "${DISCORD_WEBHOOK}"
+
+  docker_publish:
+    needs: verify
+    if: github.event_name == 'push' || (github.event_name == 'workflow_call' && inputs.publish_image)
+    runs-on: ubuntu-latest
+    env:
+      IS_PROD: ${{ github.ref_name == 'main' }}
+      RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load environment config
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW_ENV_CONFIG:-}" ]; then
+            echo "ENV_DEV / ENV_PROD secret is empty"
+            exit 1
+          fi
+
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
+              echo "Invalid key in ENV config: $key"
+              exit 1
+            fi
+
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done <<< "$RAW_ENV_CONFIG"
+
+      - name: Validate required vars
+        run: |
+          set -euo pipefail
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION ECR_REGISTRY ECR_REPO; do
+            if [ -z "${!k:-}" ]; then
+              echo "Missing required var: $k"
+              exit 1
+            fi
+          done
+
+      - name: Build and Push Docker image
+        run: |
+          set -euo pipefail
+
+          if [ "${IS_PROD}" = "true" ]; then
+            TAG_ALIAS="main"
+          else
+            TAG_ALIAS="dev"
+          fi
+
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPO}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+          echo "TAG_ALIAS=${TAG_ALIAS}" >> "$GITHUB_ENV"
+
+      - name: Login to ECR
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker image (with cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_URI }}:${{ github.sha }}
+            ${{ env.IMAGE_URI }}:${{ env.TAG_ALIAS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "Pushed image: ${IMAGE_URI}:${GITHUB_SHA}"
+          echo "Pushed image: ${IMAGE_URI}:${TAG_ALIAS}"
