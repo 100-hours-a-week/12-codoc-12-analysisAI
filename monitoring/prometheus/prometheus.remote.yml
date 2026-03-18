@@ -1,0 +1,196 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+          - localhost:9090
+
+  # analysis API metrics endpoint (/metrics) from autoscaled EC2 targets
+  - job_name: analysis-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - api_server:8000
+    ec2_sd_configs:
+      - region: __AWS_REGION__
+        port: 8010
+        filters:
+          - name: tag:__EC2_TAG_KEY__
+            values:
+              - __EC2_TAG_VALUE__
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_state]
+        regex: (running|)
+        action: keep
+      - source_labels: [__meta_ec2_private_ip]
+        regex: (.+)
+        replacement: ${1}:8010
+        target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+
+  # host resource metrics from autoscaled EC2 targets
+  - job_name: analysis-node-exporter
+    static_configs:
+      - targets:
+          - node-exporter:9100
+    ec2_sd_configs:
+      - region: __AWS_REGION__
+        port: 9100
+        filters:
+          - name: tag:__EC2_TAG_KEY__
+            values:
+              - __EC2_TAG_VALUE__
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_state]
+        regex: (running|)
+        action: keep
+      - source_labels: [__meta_ec2_private_ip]
+        regex: (.+)
+        replacement: ${1}:9100
+        target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+
+  # container metrics from autoscaled EC2 targets
+  - job_name: analysis-cadvisor
+    static_configs:
+      - targets:
+          - cadvisor:8080
+    ec2_sd_configs:
+      - region: __AWS_REGION__
+        port: 8080
+        filters:
+          - name: tag:__EC2_TAG_KEY__
+            values:
+              - __EC2_TAG_VALUE__
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_state]
+        regex: (running|)
+        action: keep
+      - source_labels: [__meta_ec2_private_ip]
+        regex: (.+)
+        replacement: ${1}:8080
+        target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+
+  # GPU metrics from autoscaled EC2 targets (if dcgm exporter is running)
+  - job_name: analysis-dcgm-exporter
+    static_configs:
+      - targets:
+          - dcgm-exporter:9400
+    ec2_sd_configs:
+      - region: __AWS_REGION__
+        port: 9400
+        filters:
+          - name: tag:__EC2_TAG_KEY__
+            values:
+              - __EC2_TAG_VALUE__
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_state]
+        regex: (running|)
+        action: keep
+      - source_labels: [__meta_ec2_private_ip]
+        regex: (.+)
+        replacement: ${1}:9400
+        target_label: __address__
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+
+  # Spring app + infra metrics from EC2 targets
+  - job_name: promtail
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 9080
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+
+  - job_name: node
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 9100
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+
+  - job_name: app
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 8080
+    metrics_path: /api/actuator/prometheus
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+      - source_labels: [__meta_ec2_tag_App]
+        target_label: application
+
+  - job_name: app_chatai
+    ec2_sd_configs:
+      - region: ap-northeast-2
+        port: 8000
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Monitoring]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_ec2_tag_Role]
+        regex: app
+        action: keep
+      - source_labels: [__meta_ec2_tag_Env]
+        regex: prod
+        action: keep
+      - source_labels: [__meta_ec2_tag_Name]
+        regex: (.+)
+        target_label: server_name
+      - source_labels: [__meta_ec2_tag_App]
+        regex: ChatAI
+        action: keep

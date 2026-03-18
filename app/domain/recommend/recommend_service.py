@@ -56,14 +56,17 @@ class RecommendService:
             print(f"❌ [DEBUG] 유저 {user_id}의 기억을 DB에서 찾을 수 없음")
             return {"message": "기록 없음"}
 
-        target_memory = user_memories[0]
+        target_memory = max(
+            user_memories,
+            key=lambda m: int((m.payload or {}).get("created_at",0)),
+        )
         target_vector = target_memory.vector
         target_payload = target_memory.payload or {}
-        target_weak_tags = set(target_memory.payload.get("weak_tags", []))
+        target_weak_tags = set(target_payload.get("weak_tags", []))
 
         # 제외할 문제 목록 = 이미 푼 문제 + 현재 도전 중인 문제
         solved_problems = set(exclude_ids) if exclude_ids else set()
-        solved_problems.update(target_memory.payload.get("recent_solved_ids", []))
+        solved_problems.update(target_payload.get("recent_solved_ids", []))
         if current_problem_id:
             solved_problems.add(current_problem_id)
 

@@ -5,7 +5,7 @@ services:
     build: .
     container_name: analysis_api_server
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
       - .:/app # 실시간 코드 수정 반영용
       - ./model_cache:/root/.cache/huggingface # 모델 재다운로드 방지용
@@ -13,3 +13,80 @@ services:
       - .env  # 환경 변수 로드
     restart: always
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: analysis_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api_server
+      - node-exporter
+      - cadvisor
+      - alertmanager
+    restart: always
+
+  grafana:
+    image: grafana/grafana:11.1.5
+    container_name: analysis_grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: always
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: analysis_alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: analysis_node_exporter
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - "/:/host:ro,rslave"
+    ports:
+      - "9100:9100"
+    restart: always
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: analysis_cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8080:8080"
+    restart: always
+
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter:3.3.8-3.6.0-ubuntu22.04
+    container_name: analysis_dcgm_exporter
+    profiles:
+      - gpu
+    cap_add:
+      - SYS_ADMIN
+    ports:
+      - "9400:9400"
+    restart: always

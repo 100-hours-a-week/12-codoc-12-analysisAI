@@ -1,0 +1,131 @@
+name: monitoring-cd
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "monitoring/**"
+      - ".github/workflows/cd-monitoring.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: monitoring-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-monitoring:
+    runs-on: ubuntu-latest
+    env:
+      IS_PROD: ${{ github.ref_name == 'main' }}
+      RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load environment config
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW_ENV_CONFIG:-}" ]; then
+            echo "ENV_DEV / ENV_PROD secret is empty"
+            exit 1
+          fi
+
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
+              echo "Invalid key in ENV config: $key"
+              exit 1
+            fi
+
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done <<< "$RAW_ENV_CONFIG"
+
+      - name: Validate required vars
+        run: |
+          set -euo pipefail
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION DEPLOY_BUCKET MONITORING_DEPLOY_KEY; do
+            if [ -z "${!k:-}" ]; then
+              echo "Missing required var: $k"
+              exit 1
+            fi
+          done
+
+      - name: Render monitoring deploy env
+        run: |
+          set -euo pipefail
+          printf "%s\n" \
+            "AWS_REGION=${AWS_REGION}" \
+            "MONITORING_EC2_TAG_KEY=${MONITORING_EC2_TAG_KEY:-MonitoringTarget}" \
+            "MONITORING_EC2_TAG_VALUE=${MONITORING_EC2_TAG_VALUE:-analysis}" \
+            "MONITORING_DEPLOY_DIR=${MONITORING_DEPLOY_DIR:-/opt/monitoring/monitoring-server}" \
+            "GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}" \
+            "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}" \
+            "DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}" \
+            > monitoring/deploy.env
+
+      - name: Upload monitoring bundle to S3
+        run: |
+          set -euo pipefail
+          cd monitoring
+          zip -r /tmp/monitoring-deploy.zip .
+          aws s3 cp /tmp/monitoring-deploy.zip "s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY}"
+
+      - name: Resolve monitoring instance
+        run: |
+          set -euo pipefail
+          MONITORING_EC2_TAG_KEY="${MONITORING_EC2_TAG_KEY:-MonitoringTarget}"
+          MONITORING_EC2_TAG_VALUE="${MONITORING_EC2_TAG_VALUE:-analysis}"
+
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters \
+              "Name=tag:${MONITORING_EC2_TAG_KEY},Values=${MONITORING_EC2_TAG_VALUE}" \
+              "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId | [0]" \
+            --output text)
+
+          if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
+            echo "No running monitoring instance found for tag ${MONITORING_EC2_TAG_KEY}=${MONITORING_EC2_TAG_VALUE}"
+            exit 1
+          fi
+
+          echo "MONITORING_INSTANCE_ID=${INSTANCE_ID}" >> "$GITHUB_ENV"
+          echo "Target monitoring instance: ${INSTANCE_ID}"
+
+      - name: Deploy monitoring via SSM
+        run: |
+          set -euo pipefail
+          MONITORING_DEPLOY_DIR="${MONITORING_DEPLOY_DIR:-/opt/monitoring/monitoring-server}"
+          REMOTE_ROOT="${MONITORING_DEPLOY_DIR}/current"
+          cat > /tmp/ssm-params.json <<EOF
+          {"commands":["bash -lc \"set -euo pipefail; mkdir -p ${MONITORING_DEPLOY_DIR}; aws s3 cp s3://${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY} /tmp/monitoring-deploy.zip; rm -rf ${REMOTE_ROOT}; mkdir -p ${REMOTE_ROOT}; unzip -o /tmp/monitoring-deploy.zip -d ${REMOTE_ROOT}; cd ${REMOTE_ROOT}; if docker compose version >/dev/null 2>&1; then docker compose -f docker-compose.monitoring.yml up -d --remove-orphans; else docker-compose -f docker-compose.monitoring.yml up -d --remove-orphans; fi\""]}
+          EOF
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${MONITORING_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy monitoring stack from ${DEPLOY_BUCKET}/${MONITORING_DEPLOY_KEY}" \
+            --parameters file:///tmp/ssm-params.json \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM command: ${COMMAND_ID}"
+
+          aws ssm wait command-executed \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${MONITORING_INSTANCE_ID}"
+
+          aws ssm get-command-invocation \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${MONITORING_INSTANCE_ID}" \
+            --query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
+            --output json
