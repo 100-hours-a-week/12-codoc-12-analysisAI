@@ -16,10 +16,12 @@ qdrant-client
 FlagEmbedding
 transformers>=4.44.2,<5
 torch
+psycopg[binary]
 
 # Utility
 pydantic-settings
 httpx
+aio-pika
 prometheus-client
 opentelemetry-api
 opentelemetry-sdk
