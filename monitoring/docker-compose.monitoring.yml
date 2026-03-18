@@ -53,3 +53,16 @@ services:
     ports:
       - "3100:3100"
     restart: always
+
+  tempo:
+    image: grafana/tempo:2.9.1
+    container_name: monitoring_tempo
+    command:
+      - "-config.file=/etc/tempo/tempo.yaml"
+    volumes:
+      - /opt/monitoring/monitoring-server/current/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - /var/lib/tempo:/var/tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+    restart: always
