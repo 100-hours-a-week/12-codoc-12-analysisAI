@@ -11,6 +11,7 @@ This folder is zipped and uploaded to S3, then used by AWS CodeDeploy.
    - AmazonEC2ContainerRegistryReadOnly
 4. `/home/ubuntu/analysis/shared/.env` (optional app env)
 5. `/home/ubuntu/analysis/shared/deploy.env` is created by CD workflow from secrets
+6. `BeforeInstall` creates `/home/ubuntu/analysis/*` and fixes ownership to `ubuntu:ubuntu`
 
 ## Local test
 

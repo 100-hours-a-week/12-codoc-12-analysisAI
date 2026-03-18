@@ -10,6 +10,9 @@ permissions:
     group: ubuntu
     mode: 755
 hooks:
+  BeforeInstall:
+    - location: scripts/prepare_dirs.sh
+      timeout: 120
   ApplicationStop:
     - location: scripts/stop_container.sh
       timeout: 120
