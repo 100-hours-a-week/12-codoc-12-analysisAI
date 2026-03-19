@@ -206,7 +206,11 @@ async def handle_report(message: AbstractIncomingMessage) -> None:
             "job_id": job_id,
             "status": "SUCCESS",
             "responded_at": _utc_now_iso(),
-            "result": _to_dict(report_data),
+            "result": {
+                "code": "SUCCESS",
+                "message": "OK",
+                "data": _to_dict(report_data),
+            },
         }
         await _publish_json(REPORT_RESPONSE_QUEUE, success_payload)
         await message.ack()
