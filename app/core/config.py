@@ -19,14 +19,6 @@ class Settings(BaseSettings):
     RABBITMQ_CONSUME_QUEUE: str = "custom.problem.request"
     RABBITMQ_PUBLISH_ROUTING_KEY: str = "custom.problem.response"
 
-    # --- RabbitMQ 설정 ---
-    APP_NOTIFICATION_MQ_ENABLED: bool = False
-    RABBITMQ_HOST: str = "localhost"
-    RABBITMQ_PORT: int = 5672
-    RABBITMQ_USERNAME: str = "guest"
-    RABBITMQ_PASSWORD: str = "guest"
-    RABBITMQ_VHOST: str = "/"
-
     @property
     def RABBITMQ_URL(self) -> str:
         vhost = (self.RABBITMQ_VHOST or "/").strip()
@@ -67,10 +59,16 @@ class Settings(BaseSettings):
     RECOMMEND_LLM_MAX_CONCURRENCY: int = 8
     RECOMMEND_LLM_ACQUIRE_TIMEOUT_SEC: float = 2.0
 
-    # OCR LLM
-    OCR_LLM_BASE_URL: str = "http://localhost:8001/v1"
-    OCR_LLM_API_KEY: str = "EMPTY"
-    OCR_LLM_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    # VLM (Qwen-VL via RunPod Serverless)
+    VLM_BASE_URL: str = "http://localhost:8001/v1"
+    VLM_API_KEY: str = "EMPTY"
+    VLM_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    VLM_TIMEOUT_SEC: float = 60.0
+
+    # Gemini Flash (요약카드/퀴즈 생성)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_TIMEOUT_SEC: float = 30.0
     
     
 

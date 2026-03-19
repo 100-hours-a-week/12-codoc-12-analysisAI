@@ -24,7 +24,6 @@ from app.core.config import settings
 from app.database.vector_db import vector_db
 from app.domain.recommend import recommend_router
 from app.domain.report import report_router
-from app.domain.workbook import workbook_router
 
 setup_logging()
 logger = logging.getLogger("codoc.api")
@@ -47,11 +46,11 @@ app.include_router(
     prefix=f"{settings.API_PREFIX}/reports",
     tags=["Report"],
 )
-app.include_router(
-    router=workbook_router.router,
-    prefix=f"{settings.API_PREFIX}/ocr",
-    tags=["Workbook"],
-)
+# app.include_router(
+#     router=workbook_router.router,
+#     prefix=f"{settings.API_PREFIX}/ocr",
+#     tags=["Workbook"],
+# )
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
