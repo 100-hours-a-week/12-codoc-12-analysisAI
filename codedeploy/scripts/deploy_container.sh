@@ -9,6 +9,7 @@ APP_ENV_FILE_PRIMARY="/home/ubuntu/app/.env"
 APP_ENV_FILE_FALLBACK="/home/ubuntu/analysis/shared/.env"
 RUNTIME_DIR="/home/ubuntu/analysis/runtime"
 PROMTAIL_RUNTIME_DIR="${RUNTIME_DIR}/promtail"
+MODEL_CACHE_DIR="/home/ubuntu/analysis/model_cache"
 EXPORTER_COMPOSE_FILE="${BUNDLE_ROOT}/monitoring/analysis-exporters.compose.yml"
 
 if [ -f "$CONFIG_FILE_PRIMARY" ]; then
@@ -67,6 +68,7 @@ elif [ -f "$APP_ENV_FILE_FALLBACK" ]; then
 fi
 
 mkdir -p "$PROMTAIL_RUNTIME_DIR"
+mkdir -p "$MODEL_CACHE_DIR"
 
 MONITOR_HOSTNAME="$(hostname | grep -oE '[0-9]+(-[0-9]+){3}' | sed 's/-/./g; s/$/:9080/')"
 if [[ -z "$MONITOR_HOSTNAME" ]]; then
@@ -85,6 +87,8 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   -p "${HOST_PORT}:${APP_PORT}" \
+  -e "APP_PORT=${APP_PORT}" \
+  -v "${MODEL_CACHE_DIR}:/root/.cache/huggingface" \
   "${DOCKER_ENV_ARGS[@]}" \
   "$IMAGE_URI"
 
