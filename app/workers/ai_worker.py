@@ -1,15 +1,17 @@
 import asyncio
 import contextlib
 import json
+import logging
 import signal
-from collections.abc import Callable
 from typing import Any, Awaitable
 from datetime import datetime, timezone
+from collections.abc import Callable
 
 from aio_pika import DeliveryMode, Message
 from aio_pika.abc import AbstractIncomingMessage
 from pydantic import BaseModel
 
+from app.common.observability.logging_config import setup_logging
 from app.common.exceptions.base_exception import BusinessException
 from app.domain.recommend.recommend_usecase import generate_recommendations_usecase
 from app.domain.report.report_service import report_service
@@ -17,6 +19,9 @@ from app.domain.recommend.recommendation_schemas import RecommendRequest
 from app.domain.report.report_schemas import ReportRequest
 from app.queue.constants import RECOMMEND_REQUEST_QUEUE, REPORT_REQUEST_QUEUE, RECOMMEND_RESPONSE_QUEUE, REPORT_RESPONSE_QUEUE
 from app.queue.rabbitmq import close_rabbitmq, get_rabbitmq_channel, init_rabbitmq
+
+setup_logging()
+logger = logging.getLogger("codoc.worker")
 
 # 타임아웃 처리
 AI_PROCESS_TIMEOUT_SEC = 90
@@ -109,7 +114,12 @@ async def _run_with_timeout_and_retry(
         except Exception as e:
             last_error = e
             if attempt < total_attempts:
-                print(f"[retry] attempt = {attempt}/{total_attempts} error={type(e).__name__}")
+                logger.warning(
+                    "event=worker_retry component=worker attempt=%s total_attempts=%s error_type=%s",
+                    attempt,
+                    total_attempts,
+                    type(e).__name__,
+                )
                 await asyncio.sleep(RETRY_BACKOFF_SEC * attempt)
                 continue
             break
@@ -125,7 +135,10 @@ async def _handle_parse_failure(
     job_id = _try_extract_job_id(message)
 
     if not job_id:
-        print(f"[parse-fail] no job_id, reject requeue=False error={parse_error!r}")
+        logger.warning(
+            "event=parse_fail component=worker action=reject_no_job_id requeue=false error=%r",
+            parse_error,
+        )
         await message.reject(requeue=False)
         return
 
@@ -140,9 +153,16 @@ async def _handle_parse_failure(
     try:
         await _publish_json(response_queue, failed_payload)
         await message.ack()
-        print(f"[parse-fail] failed-response published job_id={job_id}")
+        logger.info(
+            "event=parse_fail_response_published component=worker job_id=%s",
+            job_id,
+        )
     except Exception as publish_error:
-        print(f"[parse-fail] publish-fail job_id={job_id} error={publish_error!r}, requeue=True")
+        logger.exception(
+            "event=parse_fail_publish_error component=worker job_id=%s requeue=true error=%r",
+            job_id,
+            publish_error,
+        )
         await message.nack(requeue=True)
 
 
@@ -154,7 +174,13 @@ async def handle_recommend(message: AbstractIncomingMessage) -> None:
         return
 
     try:
-        print(f"[recommend] start job_id={job_id} requested_at={requested_at} user_id={req.user_id}")
+        logger.info(
+            "event=recommend_start component=worker queue=%s job_id=%s requested_at=%s user_id=%s",
+            RECOMMEND_REQUEST_QUEUE,
+            job_id,
+            requested_at,
+            req.user_id,
+        )
         recommend_data = await _run_with_timeout_and_retry(
             generate_recommendations_usecase, req
         )
@@ -171,7 +197,7 @@ async def handle_recommend(message: AbstractIncomingMessage) -> None:
         }
         await _publish_json(RECOMMEND_RESPONSE_QUEUE, success_payload)
         await message.ack()
-        print(f"[recommend] success job_id={job_id}")
+        logger.info("event=recommend_success component=worker job_id=%s", job_id)
     except Exception as e:
         error_code, error_message = _extract_error(e)
         failed_payload = {
@@ -184,9 +210,18 @@ async def handle_recommend(message: AbstractIncomingMessage) -> None:
         try:
             await _publish_json(RECOMMEND_RESPONSE_QUEUE, failed_payload)
             await message.ack()
-            print(f"[recommend] failed job_id={job_id} code={error_code}")
+            logger.warning(
+                "event=recommend_failed component=worker job_id=%s error_code=%s error_message=%s",
+                job_id,
+                error_code,
+                error_message,
+            )
         except Exception as publish_error:
-            print(f"[recommend] publish-fail job_id={job_id} error={publish_error!r}, requeue=True")
+            logger.exception(
+                "event=recommend_publish_error component=worker job_id=%s requeue=true error=%r",
+                job_id,
+                publish_error,
+            )
             await message.nack(requeue=True)
 
 async def handle_report(message: AbstractIncomingMessage) -> None:
@@ -197,7 +232,13 @@ async def handle_report(message: AbstractIncomingMessage) -> None:
         return
 
     try:
-        print(f"[report] start job_id={job_id} requested_at={requested_at} user_id={req.user_id}")
+        logger.info(
+            "event=report_start component=worker queue=%s job_id=%s requested_at=%s user_id=%s",
+            REPORT_REQUEST_QUEUE,
+            job_id,
+            requested_at,
+            req.user_id,
+        )
         report_data = await _run_with_timeout_and_retry(
             report_service.generate_report, req
         )
@@ -206,11 +247,15 @@ async def handle_report(message: AbstractIncomingMessage) -> None:
             "job_id": job_id,
             "status": "SUCCESS",
             "responded_at": _utc_now_iso(),
-            "result": _to_dict(report_data),
+            "result": {
+                "code": "SUCCESS",
+                "message": "OK",
+                "data": _to_dict(report_data),
+            },
         }
         await _publish_json(REPORT_RESPONSE_QUEUE, success_payload)
         await message.ack()
-        print(f"[report] success job_id={job_id}")
+        logger.info("event=report_success component=worker job_id=%s", job_id)
     except Exception as e:
         error_code, error_message = _extract_error(e)
         failed_payload = {
@@ -223,22 +268,37 @@ async def handle_report(message: AbstractIncomingMessage) -> None:
         try:
             await _publish_json(REPORT_RESPONSE_QUEUE, failed_payload)
             await message.ack()
-            print(f"[report] failed job_id={job_id} code={error_code}")
+            logger.warning(
+                "event=report_failed component=worker job_id=%s error_code=%s error_message=%s",
+                job_id,
+                error_code,
+                error_message,
+            )
         except Exception as publish_error:
-            print(f"[report] publish-fail job_id={job_id} error={publish_error!r}, requeue=True")
+            logger.exception(
+                "event=report_publish_error component=worker job_id=%s requeue=true error=%r",
+                job_id,
+                publish_error,
+            )
             await message.nack(requeue=True)
 
 async def consume_recommend() -> None:
     channel = get_rabbitmq_channel()
     queue = await channel.declare_queue(RECOMMEND_REQUEST_QUEUE, durable=True)
     await queue.consume(handle_recommend)
-    print(f"[*] consuming: {RECOMMEND_REQUEST_QUEUE}")
+    logger.info(
+        "event=worker_consume component=worker queue=%s",
+        RECOMMEND_REQUEST_QUEUE,
+    )
 
 async def consume_report() -> None:
     channel = get_rabbitmq_channel()
     queue = await channel.declare_queue(REPORT_REQUEST_QUEUE, durable=True)
     await queue.consume(handle_report)
-    print(f"[*] consuming: {REPORT_REQUEST_QUEUE}")
+    logger.info(
+        "event=worker_consume component=worker queue=%s",
+        REPORT_REQUEST_QUEUE,
+    )
 
 async def main() -> None:
     stop_event = asyncio.Event()
@@ -252,11 +312,11 @@ async def main() -> None:
     try:
         await consume_report()
         await consume_recommend()
-        print("[*] AI worker started")
+        logger.info("event=worker_started component=worker")
         await stop_event.wait()
     finally:
         await close_rabbitmq()
-        print("[*] AI worker stopped")
+        logger.info("event=worker_stopped component=worker")
 
 if __name__ == "__main__":
     asyncio.run(main())
