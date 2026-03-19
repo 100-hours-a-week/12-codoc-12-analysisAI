@@ -1,7 +1,5 @@
 import math
 from collections import defaultdict
-
-from app.common.exceptions.custom_exception import DependencyNotReadyException
 from app.domain.report.report_llm_service import report_llm_service
 from app.domain.report.report_rag_service import report_rag_service
 from app.domain.report.report_schemas import (
@@ -15,19 +13,19 @@ from app.domain.report.report_schemas import (
 )
 
 class ReportService:
-    WARMUP_THRESHOLD = 3
+    WARMUP_THRESHOLD = 2
 
     # TODO: LEVEL_BASE_LINE이랑 ROADMAP_BY_LEVEL => 이대로 할 것인지,,, 아니면 지표 바꿀 것인지 고민
     LEVEL_BASELINE = {
-        "newbie": {"independence": 65.0, "consistency": 50.0, "efficiency": 65.0},
-        "pupil": {"independence": 72.0, "consistency": 60.0, "efficiency": 72.0},
-        "specialist": {"independence": 80.0, "consistency": 70.0, "efficiency": 78.0},
+        "newbie": {"independence": 0.0, "consistency": 0.0, "efficiency": 0.0},
+        "pupil": {"independence": 0.0, "consistency": 0.0, "efficiency": 0.0},
+        "specialist": {"independence": 0.0, "consistency": 0.0, "efficiency": 0.0},
     }
 
     ROADMAP_BY_LEVEL = {
-        "newbie": "이번 주는 문제를 풀기 전에 GOAL/CONSTRAINT에 밑줄을 치고, 조건 2개 이상을 먼저 메모해보세요.",
-        "pupil": "풀이 시작 전에 N 범위와 목표 시간복잡도(O(...))를 먼저 정한 뒤, 그에 맞는 풀이를 고르세요.",
-        "specialist": "고난도 문제 2개를 골라 자료구조 선택 근거와 복잡도 근거를 한 줄씩 남기며 풀어보세요.",
+        "newbie": "풀이를 시작하기 전에 문제 목표와 제약 조건을 분리해 표시하고, 핵심 조건 2개를 체크리스트로 정리한 뒤 구현을 시작하세요.",
+        "pupil": "풀이 시작 전 입력 규모와 제한 조건을 기준으로 처리 전략을 먼저 확정하고, 전략에 맞는 알고리즘을 선택해 진행하세요.",
+        "specialist": "고난도 문제 2개를 선정해 알고리즘·자료구조 선택 근거와 검증 포인트를 각 1줄로 기록하고, 제출 전 반례 점검까지 수행하세요.",
     }
 
 
@@ -45,16 +43,12 @@ class ReportService:
 
 
     def _warmup_report(self, req: ReportRequest) -> ReportBody:
-        base = self.LEVEL_BASELINE.get(req.user_level, self.LEVEL_BASELINE["newbie"])
-
-        accuracy = self._calculate_accuracy(req)
-        independence = base["independence"]
-        efficiency = (
-            self._calculate_efficiency(req)
-            if req.raw_metrics.solved_problems_weekly  > 0
-            else base["efficiency"]
-        )
-        consistency = base["consistency"]
+        # WARM_UP에서는 정밀 점수 대신 "분석 중" 상태를 보여주기 위해
+        # 지표를 0.0으로 고정한다.
+        accuracy = 0.0
+        independence = 0.0
+        efficiency = 0.0
+        consistency = 0.0
 
         growth_index = self._growth_index(
             accuracy=accuracy,
@@ -65,29 +59,43 @@ class ReportService:
 
         weak_section = self._max_key(req.paragraph_fail_stats, default="UNKNOWN")
 
-        # TODO : 수정 예정
+
         return ReportBody(
             report_mode="WARM_UP",
             summary=ReportSummary(
                 growth_index=growth_index,
                 user_type="잠재력 폭발 아기 코알라",
-                summary_comment="좋은 출발이에요. 아직 데이터가 적어 이번 주는 가벼운 온보딩 리포트로 안내드릴게요!",
+                summary_comment=(
+                    "현재는 학습 데이터가 충분하지 않아 지표를 분석 중으로 표시하고 있어요. "
+                    "이번 주 2문제를 달성하면 다음 리포트부터 개인 맞춤 정밀 분석으로 전환됩니다!"
+                ),
             ),
             past_diagnosis=PastDiagnosis(
                 weak_section=weak_section,
                 paragraph_fail_stats=req.paragraph_fail_stats,
-                analysis_text="학습 데이터가 충분하지 않아 정밀 진단 대신 온보딩 진단을 제공합니다.",
+                analysis_text=(
+                    "문제를 읽을 때 핵심 조건을 먼저 표시하는 습관을 만들면 "
+                    "다음 리포트 정확도가 크게 올라갑니다."
+                ),
             ),
             present_growth=PresentGrowth(
                 accuracy=accuracy,
                 independence=independence,
                 efficiency=efficiency,
                 consistency=consistency,
-                metrics_analysis_comment="독립성/일관성은 현재 레벨 평균치로 대체되었습니다.",
+                metrics_analysis_comment=(
+                    "현재 지표는 분석 중 상태로 제공됩니다. "
+                    "학습 로그가 충분히 쌓이면 실제 기록 기반 점수로 자동 전환됩니다."
+                ),
                 is_imputed=True,
             ),
             future_roadmap=FutureRoadmap(
-                strategy_tip="이번 주 2~3문제만 더 풀면 개인화 정밀 분석으로 전환됩니다.",
+                strategy_tip=(
+                    "문제마다 3단계로 진행해보세요. "
+                    "1) GOAL/CONSTRAINT 밑줄 표시 "
+                    "2) 예상 시간 복잡도 한 줄 메모 "
+                    "3) 풀이 후 틀린 이유 1줄 기록"
+                ),
                 recommended_action=self.ROADMAP_BY_LEVEL.get(
                     req.user_level, self.ROADMAP_BY_LEVEL["newbie"]
                 )
@@ -125,7 +133,21 @@ class ReportService:
         )
 
         if not evidence_docs:
-            raise DependencyNotReadyException()
+            # 근거 문서가 비어도 424로 끊지 않고 STANDARD 폴백 리포트로 진행
+            evidence_docs = []
+
+        weakness_summary = {
+            "weakest_metric": weakest_metric,
+            "weak_section": weak_section,
+            "weak_quiz": weak_quiz,
+            "growth_index": growth_index,
+            "present_growth": {
+                "accuracy": accuracy,
+                "independence": independence,
+                "efficiency": efficiency,
+                "consistency": consistency,
+            },
+        }
 
         llm_text = await report_llm_service.generate_sections(
             user_level=req.user_level,
@@ -140,6 +162,9 @@ class ReportService:
                 "efficiency": efficiency,
                 "consistency": consistency,
             },
+            paragraph_fail_stats=req.paragraph_fail_stats,
+            quiz_fail_stats=req.quiz_fail_stats,
+            weakness_summary=weakness_summary,
             evidence_docs=evidence_docs
         )
 
@@ -148,7 +173,7 @@ class ReportService:
             summary=ReportSummary(
                 growth_index=growth_index,
                 user_type=self._user_type(growth_index),
-                summary_comment=llm_text["summary_comment"],
+                summary_comment=self._metrics_comment(weakest_metric),
             ),
             past_diagnosis=PastDiagnosis(
                 weak_section=weak_section,
@@ -160,7 +185,7 @@ class ReportService:
                 independence=independence,
                 efficiency=efficiency,
                 consistency=consistency,
-                metrics_analysis_comment=self._metrics_comment(weakest_metric),
+                metrics_analysis_comment=llm_text["summary_comment"],
                 is_imputed=False,
             ),
             future_roadmap=FutureRoadmap(
@@ -286,28 +311,17 @@ class ReportService:
             return "번개 맞은 코알라"
         return "잠재력 폭발 아기 코알라"
 
-    # TODO: 여기 멘트 변경
     def _metrics_comment(self, weakest_metric:str) -> str:
         mapping = {
-            "accuracy": "유칼립투스 잎을 꼼꼼히 고르듯, 문제 속 제약사항(CONSTRAINT)을 한 번 더 살펴보면 실수가 줄어들 거예요.",
-            "independence": "스스로 길을 찾는 코알라가 더 멀리 갈 수 있어요. 힌트를 보기 전 딱 5분만 더 고민해볼까요?",
-            "efficiency": "속도라는 날개를 달아볼 시간! 코드를 짜기 전, 이 문제에 가장 어울리는 시간복잡도가 무엇일지 먼저 그려보세요.",
-            "consistency": "나무 위에서 매일 조금씩 쉬어가듯, 짧더라도 매일 학습하는 습관이 예진님의 가장 큰 무기가 될 거예요.",
+            "accuracy": "유칼립투스 잎을 꼼꼼히 고르듯, 문제 속 제약사항을 한 번 더 살펴보면 실수가 줄어들 거예요🌿",
+            "independence": "스스로 길을 찾는 코알라가 더 멀리 갈 수 있어요! 힌트를 보기 전 딱 5분만 더 고민해볼까요?",
+            "efficiency": "속도라는 날개를 달아볼 시간! 문제를 읽을 때 목표와 제약조건을 먼저 표시하고 풀이 흐름을 한 줄로 정리한 뒤 시작하면 더 빠르게 접근할 수 있어요!",
+            "consistency": "나무 위에서 매일 조금씩 쉬어가듯, 짧더라도 매일 학습하는 습관이 사용자의 가장 큰 무기가 될 거예요!",
         }
         return mapping.get(
             weakest_metric,
-            "모든 지표가 골고루 성장하고 있어요! 이 균형을 유지하며 다음 단계로 나아가봐요."
+            "모든 지표가 골고루 성장하고 있어요! 이 균형을 유지하며서 한 단계 높은 문제로 성장 폭을 넓혀보세요!"
         )
-
-    # 좀 더 전문적인 버전,,
-    # def _metrics_comment(self, weakest_metric:str) -> str:
-    #     mapping = {
-    #         "accuracy": "문제의 요구사항을 로직으로 전환하는 과정에서 미세한 누수가 발생하고 있습니다. 제약 조건(Constraint)의 엄격한 준수가 필요합니다.",
-    #         "independence": "문제 해결 과정에서 외부 의존성이 높게 측정되었습니다. 스스로 로직을 설계하고 검증하는 완결성 강화가 시급합니다.",
-    #         "efficiency": "구현의 정확성에 비해 자원 활용 효율이 아쉽습니다. 알고리즘 선택 전, 데이터 규모에 따른 최적 복잡도를 산정하는 습관이 필요합니다.",
-    #         "consistency": "학습 데이터의 밀도가 불규칙합니다. 실력의 정체기를 돌파하기 위해서는 일정한 리듬의 규칙적인 훈련 로그가 뒷받침되어야 합니다.",
-    #     }
-    # return mapping.get(weakest_metric, "전반적인 지표가 균형 있게 성장 중입니다. 현재의 학습 템포를 유지하며 난이도를 점진적으로 높여보세요.")
 
 
     def _clamp(self, value:float, lo:float, hi:float) -> float:
