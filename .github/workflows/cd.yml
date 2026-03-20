@@ -262,8 +262,9 @@ jobs:
             --include-only-statuses Created Queued InProgress Ready \
             --query 'deployments[0]' \
             --output text)
+          ACTIVE_DEPLOYMENT_ID=$(printf '%s\n' "${ACTIVE_DEPLOYMENT_ID}" | tr -d '\r' | awk 'NF { print; exit }')
 
-          if [ "${ACTIVE_DEPLOYMENT_ID}" != "None" ]; then
+          if [ -n "${ACTIVE_DEPLOYMENT_ID}" ] && [ "${ACTIVE_DEPLOYMENT_ID}" != "None" ]; then
             echo "Active deployment found: ${ACTIVE_DEPLOYMENT_ID}"
             aws deploy stop-deployment \
               --deployment-id "${ACTIVE_DEPLOYMENT_ID}" \
