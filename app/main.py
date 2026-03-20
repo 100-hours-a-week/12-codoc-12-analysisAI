@@ -46,6 +46,11 @@ app.include_router(
     prefix=f"{settings.API_PREFIX}/reports",
     tags=["Report"],
 )
+# app.include_router(
+#     router=workbook_router.router,
+#     prefix=f"{settings.API_PREFIX}/ocr",
+#     tags=["Workbook"],
+# )
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):

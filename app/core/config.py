@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "CodoC-AI"
     VERSION: str = "2.0.0"
     API_PREFIX: str = "/api/v2"
-
+    
     # --- RabbitMQ 설정 ---
     APP_NOTIFICATION_MQ_ENABLED: bool = False
     RABBITMQ_HOST: str = "localhost"
@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     RABBITMQ_USERNAME: str = "guest"
     RABBITMQ_PASSWORD: str = "guest"
     RABBITMQ_VHOST: str = "/"
+    RABBITMQ_EXCHANGE: str = "custom.problem.exchange"
+    RABBITMQ_CONSUME_QUEUE: str = "custom.problem.request"
+    RABBITMQ_PUBLISH_ROUTING_KEY: str = "custom.problem.response"
 
     @property
     def RABBITMQ_URL(self) -> str:
@@ -55,6 +58,19 @@ class Settings(BaseSettings):
     RECOMMEND_LLM_TIMEOUT_SEC: float = 20.0
     RECOMMEND_LLM_MAX_CONCURRENCY: int = 8
     RECOMMEND_LLM_ACQUIRE_TIMEOUT_SEC: float = 2.0
+
+    # VLM (Qwen-VL via RunPod Serverless)
+    VLM_BASE_URL: str = "http://localhost:8001/v1"
+    VLM_API_KEY: str = "EMPTY"
+    VLM_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    VLM_TIMEOUT_SEC: float = 60.0
+
+    # Gemini Flash (요약카드/퀴즈 생성)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_TIMEOUT_SEC: float = 30.0
+    
+    
 
     @property
     def QDRANT_URL(self) -> str:
