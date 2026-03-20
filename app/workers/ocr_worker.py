@@ -99,7 +99,7 @@ async def handle_ocr(message: AbstractIncomingMessage) -> None:
         else:
             error_code, error_message = "INTERNAL_ERROR", str(e)
 
-        print(f"[ocr] failed customProblemId={custom_problem_id} code={error_code}")
+        print(f"[ocr] failed customProblemId={custom_problem_id} code={error_code} message={error_message}")
         failed = {"code": error_code, "message": error_message, "data": None}
         try:
             await _publish_response(custom_problem_id, failed)
