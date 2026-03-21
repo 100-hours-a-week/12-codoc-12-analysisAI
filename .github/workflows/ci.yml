@@ -10,6 +10,8 @@ on:
     secrets:
       ENV_DEV:
         required: false
+      ENV_STAGING:
+        required: false
       ENV_PROD:
         required: false
       DISCORD_WEBHOOK:
@@ -54,11 +56,11 @@ jobs:
       - name: Load environment config (for notify)
         if: github.event_name != 'workflow_call'
         env:
-          RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+          RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_STAGING || secrets.ENV_DEV }}
         run: |
           set -euo pipefail
           if [ -z "${RAW_ENV_CONFIG:-}" ]; then
-            echo "ENV_DEV / ENV_PROD secret is empty. notify only skipped."
+            echo "ENV_DEV / ENV_STAGING secret is empty. notify only skipped."
             exit 0
           fi
 
@@ -121,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IS_PROD: ${{ github.ref_name == 'main' }}
-      RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_PROD || secrets.ENV_DEV }}
+      RAW_ENV_CONFIG: ${{ github.ref_name == 'main' && secrets.ENV_STAGING || secrets.ENV_DEV }}
 
     steps:
       - name: Checkout
@@ -131,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${RAW_ENV_CONFIG:-}" ]; then
-            echo "ENV_DEV / ENV_PROD secret is empty"
+            echo "ENV_DEV / ENV_STAGING secret is empty"
             exit 1
           fi
 
