@@ -73,6 +73,9 @@ jobs:
             if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
               continue
             fi
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
             echo "$key=$value" >> "$GITHUB_ENV"
           done <<< "$RAW_ENV_CONFIG"
 
@@ -150,6 +153,9 @@ jobs:
               exit 1
             fi
 
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
             echo "$key=$value" >> "$GITHUB_ENV"
           done <<< "$RAW_ENV_CONFIG"
 
