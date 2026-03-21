@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     VLM_BASE_URL: str = "http://localhost:8001/v1"
     VLM_API_KEY: str = "EMPTY"
     VLM_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
-    VLM_TIMEOUT_SEC: float = 60.0
+    VLM_TIMEOUT_SEC: float = 120.0
 
     # Gemini Flash (요약카드/퀴즈 생성)
     GEMINI_API_KEY: str = ""

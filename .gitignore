@@ -37,7 +37,11 @@ qdrant_storage/
 app/database/user_dataset/
 app/database/algo_concepts/
 
-
+### 테스트 파일 ###
+Dockerfile.ocr
+test_vlm.py
+test_ocr_publish.py
+workbook_router.py
 
 
 

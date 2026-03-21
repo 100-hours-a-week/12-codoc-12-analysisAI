@@ -15,7 +15,7 @@ from app.domain.workbook.workbook_schemas import WorkbookQueueRequest, WorkbookR
 from app.queue.constants import OCR_REQUEST_QUEUE, OCR_EXCHANGE, OCR_RESPONSE_ROUTING_KEY
 from app.queue.rabbitmq import get_rabbitmq_channel, init_rabbitmq, close_rabbitmq
 
-OCR_PROCESS_TIMEOUT_SEC = 300
+OCR_PROCESS_TIMEOUT_SEC = 500
 
 
 def _utc_now_iso() -> str:
