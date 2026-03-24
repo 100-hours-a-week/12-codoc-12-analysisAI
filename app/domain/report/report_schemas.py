@@ -22,6 +22,8 @@ class RawMetrics(BaseModel):
 class ReportRequest(BaseModel):
     user_id: int
     user_level: str
+    problem_id: int | None = None
+    session_id: str | None = None
     analysis_period: AnalysisPeriod
     raw_metrics: RawMetrics
     paragraph_fail_stats: dict[str, int] = Field(default_factory=dict)
