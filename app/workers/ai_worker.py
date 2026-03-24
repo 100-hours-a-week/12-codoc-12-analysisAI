@@ -284,7 +284,7 @@ async def handle_report(message: AbstractIncomingMessage) -> None:
 
 async def consume_recommend() -> None:
     channel = get_rabbitmq_channel()
-    queue = await channel.declare_queue(RECOMMEND_REQUEST_QUEUE, durable=True)
+    queue = await channel.declare_queue(RECOMMEND_REQUEST_QUEUE, passive=True)
     await queue.consume(handle_recommend)
     logger.info(
         "event=worker_consume component=worker queue=%s",
@@ -293,7 +293,7 @@ async def consume_recommend() -> None:
 
 async def consume_report() -> None:
     channel = get_rabbitmq_channel()
-    queue = await channel.declare_queue(REPORT_REQUEST_QUEUE, durable=True)
+    queue = await channel.declare_queue(REPORT_REQUEST_QUEUE, passive=True)
     await queue.consume(handle_report)
     logger.info(
         "event=worker_consume component=worker queue=%s",

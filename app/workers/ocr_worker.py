@@ -121,7 +121,7 @@ async def main() -> None:
     try:
         channel = get_rabbitmq_channel()
         await channel.set_qos(prefetch_count=5)
-        queue = await channel.declare_queue(OCR_REQUEST_QUEUE, durable=True)
+        queue = await channel.declare_queue(OCR_REQUEST_QUEUE, passive=True)
         await queue.consume(handle_ocr)
         print(f"[*] OCR worker started, consuming: {OCR_REQUEST_QUEUE}")
         await stop_event.wait()

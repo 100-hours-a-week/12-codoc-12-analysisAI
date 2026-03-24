@@ -19,8 +19,9 @@ async def init_rabbitmq() -> None:
     # worker가 붙을 때 과도한 동시 처리 방지용
     await _channel.set_qos(prefetch_count=10)
 
+    # Spring에서 선언한 큐를 가져옴
     for queue_name in ALL_QUEUE_NAMES:
-        await _channel.declare_queue(queue_name, durable=True)
+        await _channel.declare_queue(queue_name, passive=True)
 
     # Spring에서 선언한 exchange를 가져옴
     _ocr_exchange = await _channel.get_exchange(OCR_EXCHANGE, ensure=True)
