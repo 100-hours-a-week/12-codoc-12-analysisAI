@@ -1,5 +1,7 @@
 import math
+import logging
 from collections import defaultdict
+from app.database.vector_db import vector_db
 from app.domain.report.report_llm_service import report_llm_service
 from app.domain.report.report_rag_service import report_rag_service
 from app.domain.report.report_schemas import (
@@ -11,6 +13,8 @@ from app.domain.report.report_schemas import (
     ReportResponseData,
     ReportSummary,
 )
+
+logger = logging.getLogger("codoc.report")
 
 class ReportService:
     WARMUP_THRESHOLD = 2
@@ -35,11 +39,70 @@ class ReportService:
         else:
             report = await self._standard_report(req)
 
+        await self._sync_report_metrics_to_user_memory(req, report)
+
         return ReportResponseData(
             user_id=req.user_id,
             analysis_period=req.analysis_period,
             report=report,
         )
+
+    async def _sync_report_metrics_to_user_memory(
+        self,
+        req: ReportRequest,
+        report: ReportBody,
+    ) -> None:
+        if req.problem_id is None:
+            logger.info("event=report_memory_update_skip reason=missing_problem_id user_id=%s", req.user_id)
+            return
+        if not req.session_id:
+            logger.info("event=report_memory_update_skip reason=missing_session_id user_id=%s problem_id=%s", req.user_id, req.problem_id)
+            return
+        if report.present_growth.is_imputed:
+            logger.info(
+                "event=report_memory_update_skip reason=imputed_scores user_id=%s problem_id=%s session_id=%s",
+                req.user_id,
+                req.problem_id,
+                req.session_id,
+            )
+            return
+
+        scores = {
+            "accuracy_score": report.present_growth.accuracy,
+            "independence_score": report.present_growth.independence,
+            "speed_score": report.present_growth.efficiency,
+            "consistency_score": report.present_growth.consistency,
+        }
+
+        try:
+            updated = await vector_db.update_memory_scores(
+                user_id=req.user_id,
+                problem_id=req.problem_id,
+                session_id=req.session_id,
+                scores=scores,
+            )
+            if updated:
+                logger.info(
+                    "event=report_memory_update_success user_id=%s problem_id=%s session_id=%s",
+                    req.user_id,
+                    req.problem_id,
+                    req.session_id,
+                )
+            else:
+                logger.warning(
+                    "event=report_memory_update_not_found user_id=%s problem_id=%s session_id=%s",
+                    req.user_id,
+                    req.problem_id,
+                    req.session_id,
+                )
+        except Exception as e:
+            logger.exception(
+                "event=report_memory_update_error user_id=%s problem_id=%s session_id=%s error=%r",
+                req.user_id,
+                req.problem_id,
+                req.session_id,
+                e,
+            )
 
 
     def _warmup_report(self, req: ReportRequest) -> ReportBody:

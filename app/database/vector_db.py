@@ -58,7 +58,12 @@ class VectorDB:
     def upsert_memory(self, user_id: int, problem_id: int, vector: list, payload: dict, point_id: str | None = None):
         payload.update({"user_id": user_id, "problem_id": problem_id})
 
-        raw_key = point_id or f"user:{user_id}:problem:{problem_id}:ts:{payload.get('created_at', 0)}"
+        session_id = str(payload.get("session_id") or "").strip()
+
+        if not session_id:
+            raise ValueError("session_id is required")
+
+        raw_key = point_id or f"user:{user_id}:problem:{problem_id}:session:{session_id}"
         stable_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, raw_key))
 
         self.client.upsert(
