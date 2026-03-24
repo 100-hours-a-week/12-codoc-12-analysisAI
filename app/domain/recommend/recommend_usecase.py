@@ -7,6 +7,7 @@ from app.database.vector_db import vector_db
 from app.domain.recommend.recommend_llm_service import recommend_llm_service
 from app.domain.recommend.recommend_service import recommend_service
 from app.domain.recommend.recommendation_schemas import ProblemRecommendation, RecommendRequest, RecommendResponseData
+from app.domain.recommend.recommend_rag_service import recommend_rag_service
 
 def _merge_to_five(
         base_ids: list[str], static_ids: list[str], desired_count: int=5
@@ -209,6 +210,13 @@ async def generate_recommendations_usecase(request: RecommendRequest) -> Recomme
     for idx, item in enumerate(recommendation_items):
         problem_id = item["problem_id"]
 
+        evidence_docs = await recommend_rag_service.retrieve_problem_evidence(
+            problem_id=problem_id,
+            scenario=request.scenario,
+            weak_tags=item["weak_tags"],
+            recommendation_context=item["reason_context"],
+            top_k=2,
+        )
         raw_payload = await vector_db.get_problem_by_id(problem_id)
         problem_payload, required_missing, recommended_missing, normalized_notes = _normalize_problem_payload(
             expected_problem_id=problem_id,
@@ -236,6 +244,7 @@ async def generate_recommendations_usecase(request: RecommendRequest) -> Recomme
                 "weak_tags": item["weak_tags"],
                 "recommendation_context": item["reason_context"],
                 "problem_payload": problem_payload,
+                "evidence_docs": evidence_docs,
                 "fallback_slot": idx,
             }
         )

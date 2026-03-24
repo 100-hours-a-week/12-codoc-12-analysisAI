@@ -43,6 +43,7 @@ class RecommendLlmService:
             weak_tags = item.get("weak_tags", [])
             problem_payload = item.get("problem_payload")
             recommendation_context = item.get("recommendation_context", {}) or {}
+            evidence_docs = item.get("evidence_docs", []) or []
             fallback_slot = item.get("fallback_slot")
 
             fallback = self._fallback_reason(
@@ -58,9 +59,11 @@ class RecommendLlmService:
             if not problem_payload:
                 print("[DEBUG] problem_payload is None -> fallback")
                 continue
+
             tags = problem_payload.get("tags", [])
             matched_tags = recommendation_context.get("matched_tags", [])
             focus_tags = weak_tags or matched_tags or tags[:2]
+
             ending_styles = [
                 "정리해볼 수 있어요.",
                 "점검해보면 좋아요.",
@@ -70,6 +73,18 @@ class RecommendLlmService:
             ]
             style_hint = ending_styles[(fallback_slot or 0) % len(ending_styles)]
 
+            compact_evidence = []
+            for d in evidence_docs[:2]:
+                if not isinstance(d, dict):
+                    continue
+                compact_evidence.append(
+                    {
+                        "paragraph_type": d.get("paragraph_type", ""),
+                        "essential_summary": d.get("essential_summary", ""),
+                        "essential_keywords": d.get("essential_keywords", []),
+                        "chatbot_answer_guide": d.get("chatbot_answer_guide", ""),
+                    }
+                )
             llm_items.append(
                 {
                     "problem_id": problem_id,
@@ -88,6 +103,7 @@ class RecommendLlmService:
                     "weak_tags": weak_tags,
                     "focus_tags": focus_tags,
                     "style_hint": style_hint,
+                    "evidence_docs": compact_evidence,
                 }
             )
 
@@ -104,6 +120,7 @@ class RecommendLlmService:
             "문제의 스토리나 배경 상황을 길게 설명하지 말고, 학습 관점의 보완 포인트 중심으로 작성한다. "
             "수치 조건, 변수명, 수식, 복잡도 표기 같은 원문 세부사항을 직접 인용하지 않는다. "
             "알고리즘 명칭(DP, BFS, DFS, 투포인터, 이분탐색 등)도 직접 노출하지 않는다."
+            "각 문제의 evidence_docs를 최우선 근거로 사용한다."
         )
 
         user_prompt = f"""
@@ -123,13 +140,15 @@ class RecommendLlmService:
         2. 문제의 "읽기 포인트"를 반드시 반영한다.
            - 조건 해석 / 경계값 / 예외 케이스 / 출력 형식 / 핵심 로직 전개 중 최소 1개
         3. 사용자 취약 태그와 문제 포인트를 자연스럽게 연결한다.
-        4. 문제 정보(제목/태그/요약/핵심 키워드) 중 최소 1개를 내부적으로 참고하되,
+        4. 각 문제의 evidence_docs에서 최소 1개 근거를 반영한다.
+            - evidence_docs가 비어 있으면 title/tags/summary를 근거로 작성한다.
+        5. 문제 정보(제목/태그/요약/핵심 키워드) 중 최소 1개를 내부적으로 참고하되,
            최종 문장은 문제 줄거리/배경 설명 없이 학습 포인트 중심으로 작성한다.
-        5. 추천 방식별 톤 가이드를 따른다.
+        6. 추천 방식별 톤 가이드를 따른다.
            - NEW: 문제 줄거리/제목/수치/고유명사 언급 금지, 학습 포인트 중심 문장만.
            - DAILY/ON_DEMAND: 보완 포인트 중심 톤, 실수 패턴 개선 관점 강조
-        6. 협업 추천인 경우에도 "몇 명의 사용자가 풀었다" 같은 문장은 직접 쓰지 않는다.
-        7. 다음 표현은 금지한다.
+        7. 협업 추천인 경우에도 "몇 명의 사용자가 풀었다" 같은 문장은 직접 쓰지 않는다.
+        8. 다음 표현은 금지한다.
            - "추천한 문제예요"
            - "좋은 문제예요"
            - "도움이 돼요"
@@ -137,19 +156,19 @@ class RecommendLlmService:
            - "향상시켰어요"
            - "몇 명의 사용자가"
            - 문제 배경/스토리를 그대로 설명하는 문장
-        8. 문체는 친절함 50, 전문성 50의 균형을 유지한다.
+        9. 문체는 친절함 50, 전문성 50의 균형을 유지한다.
            - 부드러운 존댓말로 작성하되 학습 포인트는 구체적으로 제시한다.
            - 과장된 칭찬/감탄 표현은 사용하지 않는다.
            - 지나치게 어둡거나 단정적인 표현은 사용하지 않는다.
-        9. 구체적이되 장황하지 않게, 서비스 문구처럼 간결하게 작성한다.
-        10. 아래 예시는 참고만 하고 문장을 그대로 복사하지 않는다.
-        11. 문제 원문의 세부 조건을 그대로 쓰지 않는다.
+        10. 구체적이되 장황하지 않게, 서비스 문구처럼 간결하게 작성한다.
+        11. 아래 예시는 참고만 하고 문장을 그대로 복사하지 않는다.
+        12. 문제 원문의 세부 조건을 그대로 쓰지 않는다.
            - 금지: 숫자 범위(예: 10^5), 변수명(N, M), 수식/부등식, 복잡도 표기(O(N))
            - 권장: "조건 해석", "경계값 점검", "예외 처리", "출력 형식"처럼 추상화된 표현
-        12. 알고리즘 이름을 직접 쓰지 않는다.
+        13. 알고리즘 이름을 직접 쓰지 않는다.
            - 금지: DP, BFS, DFS, 투포인터, 이분탐색, 슬라이딩 윈도우 등
            - 권장: "풀이 흐름", "로직 전개", "분기 처리", "예외 대응" 같은 표현
-        13. 문장 끝맺음은 매번 다양하게 작성한다.
+        14. 문장 끝맺음은 매번 다양하게 작성한다.
            - "문제예요.", "문제입니다."로만 반복 종료하지 않는다.
            - 이번 문장 권장 끝맺음 스타일: "{style_hint}"
 

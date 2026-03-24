@@ -1,7 +1,9 @@
 import uuid
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
+from sympy.physics.quantum.gate import normalized
 
 from app.core.config import settings
 
@@ -56,7 +58,12 @@ class VectorDB:
     def upsert_memory(self, user_id: int, problem_id: int, vector: list, payload: dict, point_id: str | None = None):
         payload.update({"user_id": user_id, "problem_id": problem_id})
 
-        raw_key = point_id or f"user:{user_id}:problem:{problem_id}:ts:{payload.get('created_at', 0)}"
+        session_id = str(payload.get("session_id") or "").strip()
+
+        if not session_id:
+            raise ValueError("session_id is required")
+
+        raw_key = point_id or f"user:{user_id}:problem:{problem_id}:session:{session_id}"
         stable_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, raw_key))
 
         self.client.upsert(
@@ -82,5 +89,78 @@ class VectorDB:
             with_payload=True,
         )
 
+    async def find_latest_memory_point_id(
+        self,
+        *,
+        user_id:int,
+        problem_id: int,
+        session_id: str | None = None,
+    ) -> Any | None:
+        must_conditions: list[models.FieldCondition] = [
+            models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id)),
+            models.FieldCondition(key="problem_id", match=models.MatchValue(value=problem_id)),
+        ]
+        if session_id:
+            must_conditions.append(
+                models.FieldCondition(key="session_id", match=models.MatchValue(value=session_id)),
+            )
+
+        rows, _ = self.client.scroll(
+            collection_name=self.memory_collection,
+            scroll_filter=models.Filter(must=must_conditions),
+            limit=100,
+            with_payload=True,
+        )
+        if not rows:
+            return None
+
+        latest = max(rows, key=lambda r: int((r.payload or {}).get("created_at", 0)))
+        return latest.id
+
+    @staticmethod
+    def _weakest_metric_from_scores(scores: dict[str, float| int]) -> str:
+        metric_map = {
+            "accuracy_score": "ACCURACY",
+            "independence_score": "INDEPENDENCE",
+            "speed_score": "SPEED",
+            "consistency_score": "CONSISTENCY",
+        }
+        weakest_key = min(metric_map.keys(), key=lambda k:float(scores.get(k,0)))
+        return metric_map[weakest_key]
+
+    async def update_memory_scores(
+            self,
+            *,
+            user_id: int,
+            problem_id: int,
+            session_id: str | None,
+            scores: dict[str, float | int],
+    ) -> bool:
+        point_id = await self.find_latest_memory_point_id(
+            user_id=user_id,
+            problem_id=problem_id,
+            session_id=session_id,
+        )
+        if point_id is None:
+            return False
+
+        normalized_scores = {
+            "accuracy_score": float(scores.get("accuracy_score", 0)),
+            "independence_score": float(scores.get("independence_score", 0)),
+            "speed_score": float(scores.get("speed_score", 0)),
+            "consistency_score": float(scores.get("consistency_score", 0)),
+        }
+        metric = self._weakest_metric_from_scores(normalized_scores)
+
+        self.client.set_payload(
+            collection_name=self.memory_collection,
+            payload={
+                "metric_source": "REPORT",
+                "metric": metric,
+                "scores": normalized_scores,
+            },
+            points=[point_id],
+        )
+        return True
 
 vector_db = VectorDB()
