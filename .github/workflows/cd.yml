@@ -19,6 +19,7 @@ jobs:
       publish_image: true
     secrets:
       ENV_DEV: ${{ secrets.ENV_DEV }}
+      ENV_STAGING: ${{ secrets.ENV_STAGING }}
       ENV_PROD: ${{ secrets.ENV_PROD }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
@@ -55,6 +56,9 @@ jobs:
               exit 1
             fi
 
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
             echo "$key=$value" >> "$GITHUB_ENV"
           done <<< "$RAW_ENV_CONFIG"
 
@@ -81,6 +85,7 @@ jobs:
           APP_ENV_CONTENT_BASE64=$(printf '%s\n' "$RAW_ENV_CONFIG" | \
             grep -Ev '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|ECR_REGISTRY|ECR_REPO|CODEDEPLOY_APP|CODEDEPLOY_GROUP|DEPLOY_BUCKET|DEPLOY_KEY|DISCORD_WEBHOOK|CONTAINER_NAME|HOST_PORT|APP_PORT|HEALTH_PATH|SSM_PARAM_NAME|APP_ENV_PATH|DEV_DEPLOY_SCRIPT_PATH)=' | \
             base64 -w0)
+          echo "::add-mask::$APP_ENV_CONTENT_BASE64"
 
           cat > /tmp/ssm-params.json <<EOF
           {"commands":["bash -lc \"set -euo pipefail; AWS_REGION='${AWS_REGION}' ECR_REGISTRY='${ECR_REGISTRY}' ECR_REPO='${ECR_REPO}' IMAGE_TAG='dev' CONTAINER_NAME='${CONTAINER_NAME}' HOST_PORT='${HOST_PORT}' APP_PORT='${APP_PORT}' HEALTH_PATH='${HEALTH_PATH}' APP_ENV_PATH='${APP_ENV_PATH}' APP_ENV_CONTENT_BASE64='${APP_ENV_CONTENT_BASE64}' '${DEV_DEPLOY_SCRIPT_PATH}'\""]}
@@ -126,11 +131,12 @@ jobs:
             esac
           done
 
-          aws ssm get-command-invocation \
+          FINAL_INVOCATION_STATUS=$(aws ssm get-command-invocation \
             --command-id "${COMMAND_ID}" \
             --instance-id "${INSTANCE_ID}" \
-            --query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
-            --output json
+            --query "Status" \
+            --output text 2>/dev/null || echo "Unknown")
+          echo "Final SSM invocation status: ${FINAL_INVOCATION_STATUS}"
 
           if [ -z "${FINAL_STATUS}" ]; then
             echo "SSM command did not finish within the allotted time"
@@ -181,13 +187,12 @@ jobs:
           }" \
           "${DISCORD_WEBHOOK}"
 
-  deploy_main:
+  deploy_staging:
     if: github.ref_name == 'main'
     needs: ci
     runs-on: ubuntu-latest
     env:
-      IS_PROD: true
-      RAW_ENV_CONFIG: ${{ secrets.ENV_PROD }}
+      RAW_ENV_CONFIG: ${{ secrets.ENV_STAGING }}
 
     steps:
       - name: Checkout
@@ -197,7 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${RAW_ENV_CONFIG:-}" ]; then
-            echo "ENV_DEV / ENV_PROD secret is empty"
+            echo "ENV_STAGING secret is empty"
             exit 1
           fi
 
@@ -214,6 +219,9 @@ jobs:
               exit 1
             fi
 
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
             echo "$key=$value" >> "$GITHUB_ENV"
           done <<< "$RAW_ENV_CONFIG"
 
@@ -236,11 +244,11 @@ jobs:
             "AWS_REGION=${AWS_REGION}" \
             "ECR_REGISTRY=${ECR_REGISTRY}" \
             "ECR_REPO=${ECR_REPO}" \
-            "DEPLOY_TAG=main" \
-            "CONTAINER_NAME=analysis_api_server" \
-            "HOST_PORT=8010" \
-            "APP_PORT=8000" \
-            "HEALTH_PATH=/" \
+            "DEPLOY_TAG=${GITHUB_SHA}" \
+            "CONTAINER_NAME=${CONTAINER_NAME:-analysis_api_server}" \
+            "HOST_PORT=${HOST_PORT:-8010}" \
+            "APP_PORT=${APP_PORT:-8000}" \
+            "HEALTH_PATH=${HEALTH_PATH:-/}" \
             "SSM_PARAM_NAME=${SSM_PARAM_NAME:-analysis-core}" \
             > codedeploy/deploy.env
 
@@ -340,12 +348,183 @@ jobs:
           curl -X POST -H "Content-Type: application/json" \
           -d "{
             \"embeds\": [{
-              \"title\": \"[AI - analysis] CD 배포 결과 알림\",
+              \"title\": \"[AI - analysis] Staging CD 배포 결과 알림\",
               \"description\": \"**상태**: ${STATUS}\\n**브랜치**: ${BRANCH}\\n**담당자**: ${ACTOR}\",
               \"color\": ${COLOR},
               \"fields\": [
                 {\"name\": \"커밋 메시지\", \"value\": \"${COMMIT_MSG_ESCAPED}\"},
                 {\"name\": \"Deployment ID\", \"value\": \"${DEPLOYMENT_ID_MSG}\"},
+                {\"name\": \"배포 로그\", \"value\": \"${RUN_URL}\"}
+              ]
+            }]
+          }" \
+          "${DISCORD_WEBHOOK}"
+
+  deploy_prod:
+    if: github.ref_name == 'main'
+    needs: deploy_staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    env:
+      RAW_ENV_CONFIG: ${{ secrets.ENV_PROD }}
+
+    steps:
+      - name: Load environment config
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW_ENV_CONFIG:-}" ]; then
+            echo "ENV_PROD secret is empty"
+            exit 1
+          fi
+
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            if ! [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then
+              echo "Invalid key in ENV config: $key"
+              exit 1
+            fi
+
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done <<< "$RAW_ENV_CONFIG"
+
+      - name: Validate required vars
+        run: |
+          set -euo pipefail
+          for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION ECS_CLUSTER ECS_SERVICE ECS_CONTAINER_NAME ECR_REGISTRY ECR_REPO DISCORD_WEBHOOK; do
+            if [ -z "${!k:-}" ]; then
+              echo "Missing required var: $k"
+              exit 1
+            fi
+          done
+
+      - name: Register task definition with new image
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPO}:${GITHUB_SHA}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+          CURRENT_TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          if [ -z "${CURRENT_TASK_DEF_ARN}" ] || [ "${CURRENT_TASK_DEF_ARN}" = "None" ]; then
+            echo "Unable to resolve current task definition for ${ECS_CLUSTER}/${ECS_SERVICE}"
+            exit 1
+          fi
+
+          aws ecs describe-task-definition \
+            --task-definition "${CURRENT_TASK_DEF_ARN}" \
+            --query 'taskDefinition' \
+            --output json > /tmp/task-definition.source.json
+
+          if ! jq -e --arg container_name "${ECS_CONTAINER_NAME}" '.containerDefinitions[] | select(.name == $container_name)' /tmp/task-definition.source.json >/dev/null; then
+            echo "Container not found in task definition: ${ECS_CONTAINER_NAME}"
+            exit 1
+          fi
+
+          jq \
+            --arg container_name "${ECS_CONTAINER_NAME}" \
+            --arg image_uri "${IMAGE_URI}" \
+            '
+              .containerDefinitions |= map(
+                if .name == $container_name
+                then .image = $image_uri
+                else .
+                end
+              )
+              | {
+                  family,
+                  taskRoleArn,
+                  executionRoleArn,
+                  networkMode,
+                  containerDefinitions,
+                  volumes,
+                  placementConstraints,
+                  requiresCompatibilities,
+                  cpu,
+                  memory,
+                  pidMode,
+                  ipcMode,
+                  proxyConfiguration,
+                  inferenceAccelerators,
+                  ephemeralStorage,
+                  runtimePlatform
+                }
+              | with_entries(select(.value != null))
+            ' /tmp/task-definition.source.json > /tmp/task-definition.register.json
+
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-definition.register.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "NEW_TASK_DEF_ARN=${NEW_TASK_DEF_ARN}" >> "$GITHUB_ENV"
+          echo "Registered task definition: ${NEW_TASK_DEF_ARN}"
+
+      - name: Deploy to ECS service
+        run: |
+          set -euo pipefail
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${NEW_TASK_DEF_ARN}" \
+            --force-new-deployment >/dev/null
+
+      - name: Wait ECS service stable
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}"
+
+      - name: Notify Discord (always)
+        if: always()
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BRANCH="${{ github.ref_name }}"
+          ACTOR="${{ github.actor }}"
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+
+          if [ -z "$COMMIT_MSG" ]; then
+            COMMIT_MSG="(커밋 메시지를 이벤트에서 가져올 수 없음)"
+          fi
+
+          COMMIT_MSG_ESCAPED=$(printf '%s' "$COMMIT_MSG" | sed 's/\\/\\\\/g; s/\"/\\\"/g; :a;N;$!ba;s/\n/\\n/g')
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="✅ 성공"
+            COLOR="65280"
+          else
+            STATUS="❌ 실패"
+            COLOR="16711680"
+          fi
+
+          TASK_DEFINITION_MSG="${NEW_TASK_DEF_ARN:-N/A}"
+
+          curl -X POST -H "Content-Type: application/json" \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"[AI - analysis] Production ECS 배포 결과 알림\",
+              \"description\": \"**상태**: ${STATUS}\\n**브랜치**: ${BRANCH}\\n**담당자**: ${ACTOR}\",
+              \"color\": ${COLOR},
+              \"fields\": [
+                {\"name\": \"커밋 메시지\", \"value\": \"${COMMIT_MSG_ESCAPED}\"},
+                {\"name\": \"ECS Service\", \"value\": \"${ECS_CLUSTER}/${ECS_SERVICE}\"},
+                {\"name\": \"Task Definition\", \"value\": \"${TASK_DEFINITION_MSG}\"},
                 {\"name\": \"배포 로그\", \"value\": \"${RUN_URL}\"}
               ]
             }]
