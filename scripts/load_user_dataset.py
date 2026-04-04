@@ -47,8 +47,12 @@ def load_user_memories():
 
                 full_payload = item.get("payload", {})
                 problem_id = int(full_payload.get("problem_id"))
-                created_at = int(full_payload.get("created_at", 0))
-                point_id = f"user:{user_id_int}:problem:{problem_id}:ts:{created_at}"
+                session_id = str(full_payload.get("session_id") or "").strip()
+                point_id = f"user:{user_id_int}:problem:{problem_id}:session:{session_id}"
+
+                if not session_id:
+                    print(f"{file_name}: session_id 누락으로 스킵")
+                    continue
 
                 vector_db.upsert_memory(
                     user_id=user_id_int,
